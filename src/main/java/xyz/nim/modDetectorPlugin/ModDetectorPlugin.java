@@ -177,23 +177,36 @@ extends JavaPlugin {
 
     // Pre-5.0.0 installs carry mode: + blocked-mods: instead of detect:. Rather than rewriting the
     // admin's file (which would cost every comment), derive the ticked set in memory and say so loudly.
-    // A blacklist has no faithful tick-off equivalent - the safe reading of it is "tick the mods with a
-    // working punish chain", which is what the shipped default already is - so that is what it falls
-    // back to. Getting this wrong in either direction only ever changes which tier a mod is probed in.
+    // Both modes translate exactly: whitelist ticked the listed ids, blacklist ticked everything EXCEPT
+    // the listed ids, so the complement of blocked-mods is the one reading that reproduces what 4.x
+    // detected. Falling back to the shipped default here instead would quietly re-enable every mod the
+    // admin had deliberately switched off, which is the opposite of a safe migration.
     private List<String> deriveLegacyDetectList() {
         java.util.logging.Logger logger = this.getLogger();
         String string = this.getConfig().getString("mode", "blacklist");
         List<String> list = this.getConfig().getStringList("blocked-mods");
-        logger.warning("detect: is missing but the legacy mode: / blocked-mods: keys are present - this looks like a pre-5.0.0 config.yml. Nothing in this file has been rewritten.");
-        if (!"whitelist".equalsIgnoreCase(string)) {
-            logger.warning("Legacy mode: " + string + " over " + list.size() + " blocked mod(s) is a blacklist, which has no direct tick-off equivalent. Falling back to the shipped default (the mods with a working punish chain). Add ids to the detect: list to override.");
-            return this.catalog.allIds();
-        }
         java.util.LinkedHashSet<String> linkedHashSet = new java.util.LinkedHashSet<String>();
         for (String string2 : list) {
             if (string2 != null && !string2.isBlank()) {
                 linkedHashSet.add(string2.trim().toLowerCase());
             }
+        }
+        logger.warning("detect: is missing but the legacy mode: / blocked-mods: keys are present - this looks like a pre-5.0.0 config.yml. Nothing in this file has been rewritten.");
+        if (!"whitelist".equalsIgnoreCase(string)) {
+            ArrayList<String> arrayList = new ArrayList<String>();
+            int n = 0;
+            for (String string3 : this.catalog.allIds()) {
+                if (string3 != null && linkedHashSet.contains(string3.trim().toLowerCase())) {
+                    ++n;
+                    continue;
+                }
+                arrayList.add(string3);
+            }
+            // Ticking this many ids means tier 1 will match on ordinary players and escalate on most
+            // joins, which is exactly what 4.x already did - the admin's exclusions were the only
+            // throttle they had, and those are honoured above.
+            logger.warning("Legacy mode: " + string + " over " + list.size() + " blocked mod(s) is a blacklist, so every other catalog id is ticked: " + arrayList.size() + " ticked, " + n + " left unticked. That is what 4.x detected, but with escalation a ticked mod can now cost a tier-2 probe on every join - move the ids you care about into the detect: list to make it permanent.");
+            return arrayList;
         }
         if (linkedHashSet.isEmpty()) {
             logger.warning("Legacy mode: whitelist with an empty blocked-mods: list tracked nothing. Nothing is ticked for now - add ids to the detect: list.");

@@ -1,9 +1,3 @@
-/*
- * Decompiled with CFR 0.152.
- * 
- * Could not load the following classes:
- *  org.bukkit.entity.Player
- */
 package xyz.nim.modDetectorPlugin.hackcheck;
 
 import java.lang.reflect.Method;
@@ -64,4 +58,5 @@ final class BedrockDetector {
         }
     }
 }
+
 

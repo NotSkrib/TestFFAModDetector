@@ -1,13 +1,3 @@
-/*
- * Decompiled with CFR 0.152.
- * 
- * Could not load the following classes:
- *  net.kyori.adventure.text.Component
- *  net.kyori.adventure.text.TextComponent
- *  net.kyori.adventure.text.format.NamedTextColor
- *  net.kyori.adventure.text.format.TextColor
- *  net.kyori.adventure.text.format.TextDecoration
- */
 package xyz.nim.modDetectorPlugin;
 
 import net.kyori.adventure.text.Component;
@@ -39,4 +29,5 @@ public final class Msg {
         return Component.text((String)"\u25ac".repeat(32), (TextColor)NamedTextColor.DARK_GRAY);
     }
 }
+
 

@@ -1,22 +1,3 @@
-/*
- * Decompiled with CFR 0.152.
- * 
- * Could not load the following classes:
- *  net.kyori.adventure.text.Component
- *  net.kyori.adventure.text.TextComponent
- *  net.kyori.adventure.text.event.ClickEvent
- *  net.kyori.adventure.text.event.HoverEvent
- *  net.kyori.adventure.text.event.HoverEventSource
- *  net.kyori.adventure.text.format.NamedTextColor
- *  net.kyori.adventure.text.format.TextColor
- *  net.kyori.adventure.text.format.TextDecoration
- *  org.bukkit.Bukkit
- *  org.bukkit.command.Command
- *  org.bukkit.command.CommandExecutor
- *  org.bukkit.command.CommandSender
- *  org.bukkit.command.TabCompleter
- *  org.bukkit.entity.Player
- */
 package xyz.nim.modDetectorPlugin.command;
 
 import java.util.ArrayList;
@@ -259,4 +240,5 @@ TabCompleter {
     private record Entry(String usage, String description, boolean needsArg) {
     }
 }
+
 

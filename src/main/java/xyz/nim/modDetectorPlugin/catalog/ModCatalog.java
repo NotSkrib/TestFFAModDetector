@@ -1,10 +1,3 @@
-/*
- * Decompiled with CFR 0.152.
- * 
- * Could not load the following classes:
- *  org.bukkit.configuration.ConfigurationSection
- *  org.bukkit.entity.Player
- */
 package xyz.nim.modDetectorPlugin.catalog;
 
 import java.util.ArrayList;
@@ -354,4 +347,5 @@ public final class ModCatalog {
 
     }
 }
+
 

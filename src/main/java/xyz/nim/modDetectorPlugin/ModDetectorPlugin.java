@@ -1,22 +1,3 @@
-/*
- * Decompiled with CFR 0.152.
- * 
- * Could not load the following classes:
- *  net.kyori.adventure.text.Component
- *  net.kyori.adventure.text.TextComponent
- *  net.kyori.adventure.text.format.NamedTextColor
- *  net.kyori.adventure.text.format.TextColor
- *  org.bukkit.Bukkit
- *  org.bukkit.command.CommandExecutor
- *  org.bukkit.command.CommandSender
- *  org.bukkit.command.PluginCommand
- *  org.bukkit.command.TabCompleter
- *  org.bukkit.configuration.ConfigurationSection
- *  org.bukkit.entity.Player
- *  org.bukkit.event.Listener
- *  org.bukkit.plugin.Plugin
- *  org.bukkit.plugin.java.JavaPlugin
- */
 package xyz.nim.modDetectorPlugin;
 
 import java.io.File;
@@ -386,4 +367,5 @@ extends JavaPlugin {
 
     }
 }
+
 

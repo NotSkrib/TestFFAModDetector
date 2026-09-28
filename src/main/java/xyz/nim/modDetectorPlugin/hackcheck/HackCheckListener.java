@@ -1,19 +1,3 @@
-/*
- * Decompiled with CFR 0.152.
- * 
- * Could not load the following classes:
- *  net.kyori.adventure.text.Component
- *  net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
- *  org.bukkit.Bukkit
- *  org.bukkit.entity.Player
- *  org.bukkit.event.EventHandler
- *  org.bukkit.event.EventPriority
- *  org.bukkit.event.Listener
- *  org.bukkit.event.block.SignChangeEvent
- *  org.bukkit.event.player.PlayerJoinEvent
- *  org.bukkit.event.player.PlayerQuitEvent
- *  org.bukkit.plugin.Plugin
- */
 package xyz.nim.modDetectorPlugin.hackcheck;
 
 import java.util.HashSet;
@@ -105,4 +89,5 @@ implements Listener {
         this.manager.handleSignResponse(player, signChangeEvent.getBlock().getLocation(), stringArray);
     }
 }
+
 

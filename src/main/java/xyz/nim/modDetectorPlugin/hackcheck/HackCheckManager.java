@@ -1,17 +1,3 @@
-/*
- * Decompiled with CFR 0.152.
- * 
- * Could not load the following classes:
- *  net.kyori.adventure.text.Component
- *  net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer
- *  org.bukkit.Bukkit
- *  org.bukkit.ChatColor
- *  org.bukkit.Location
- *  org.bukkit.command.CommandSender
- *  org.bukkit.entity.Player
- *  org.bukkit.plugin.Plugin
- *  org.bukkit.scheduler.BukkitTask
- */
 package xyz.nim.modDetectorPlugin.hackcheck;
 
 import java.util.ArrayDeque;
@@ -425,4 +411,5 @@ public final class HackCheckManager {
         }
     }
 }
+
 

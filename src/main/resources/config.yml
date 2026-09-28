@@ -31,13 +31,15 @@ detection-log:
 #  commands report that they could not find the list. See ADDING-MODS.md.
 #
 #  Shipped default: every mod in the catalog that ships `punish: true`, sorted
-#  alphabetically, EXCEPT the two inert brand-anomaly entries vanilla-spoof and
-#  geyser-spoof - they signal through NO_BRAND / VANILLA_SPOOF / GEYSER_SPOOF,
-#  none of which ModCatalog.SignalSource knows, so they are no-ops today (see
-#  ADDING-MODS.md). That is 74 - 2 = 72 ids: only the mods this plugin can
-#  actually act on. Add the informational ones from the reference block below
-#  (utilities, launchers, QoL mods) if you want them reported in tier 1 too;
-#  they are still covered by tier 2 on a detection.
+#  alphabetically, EXCEPT vanilla-spoof and geyser-spoof. Those two signal
+#  through VANILLA_SPOOF / GEYSER_SPOOF, neither of which ModCatalog.SignalSource
+#  knows, so they are no-ops today (see ADDING-MODS.md). That is 74 - 2 = 72
+#  ids: only the mods this plugin can actually act on. The third brand-anomaly
+#  entry, no-brand, ships punish: false so it never qualified to begin with - it
+#  is inert for the same reason, via NO_BRAND; ADDING-MODS.md covers all three.
+#  Add the informational ones from the reference block below (utilities,
+#  launchers, QoL mods) if you want them reported in tier 1 too; they are still
+#  covered by tier 2 on a detection.
 detect:
   - aristois
   - auto-armor

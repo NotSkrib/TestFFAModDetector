@@ -88,7 +88,7 @@ extends JavaPlugin {
             pluginCommand.setExecutor((CommandExecutor)modDetectorCommand);
             pluginCommand.setTabCompleter((TabCompleter)modDetectorCommand);
         }
-        this.getLogger().info("ErrorSMP Mod Detector enabled. Known mods: " + this.catalog.knownCount() + " | Hack definitions: " + this.hackDefinitions.size() + " | Sign-probe: " + (this.signProbeActive ? "active" : "disabled"));
+        this.getLogger().info(Msg.BRAND + " enabled. Known mods: " + this.catalog.knownCount() + " | Hack definitions: " + this.hackDefinitions.size() + " | Sign-probe: " + (this.signProbeActive ? "active" : "disabled"));
     }
 
     public void onDisable() {
@@ -182,7 +182,7 @@ extends JavaPlugin {
             Component string2;
             string2 = Msg.prefixed(((TextComponent)Component.text((String)player.getName(), (TextColor)NamedTextColor.WHITE).append((Component)Component.text((String)" detected with: ", (TextColor)NamedTextColor.GRAY))).append((Component)Component.text((String)string, (TextColor)NamedTextColor.YELLOW)));
             for (Player player2 : Bukkit.getOnlinePlayers()) {
-                if (!player2.hasPermission("moddetector.alerts")) continue;
+                if (!player2.hasPermission("testffa.alerts")) continue;
                 player2.sendMessage((Component)string2);
             }
             this.getLogger().info(player.getName() + " detected with: " + string);
@@ -235,8 +235,8 @@ extends JavaPlugin {
     }
 
     public boolean manualCheck(Player player, CommandSender commandSender) {
-        if (player.hasPermission("moddetector.bypass")) {
-            commandSender.sendMessage(Msg.prefixed(Component.text((String)player.getName(), (TextColor)NamedTextColor.WHITE).append((Component)Component.text((String)" has moddetector.bypass - check skipped.", (TextColor)NamedTextColor.YELLOW))));
+        if (player.hasPermission("testffa.bypass")) {
+            commandSender.sendMessage(Msg.prefixed(Component.text((String)player.getName(), (TextColor)NamedTextColor.WHITE).append((Component)Component.text((String)" has testffa.bypass - check skipped.", (TextColor)NamedTextColor.YELLOW))));
             return false;
         }
         if (this.hackCheckManager.isChecking(player.getUniqueId())) {

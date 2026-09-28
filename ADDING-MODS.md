@@ -1,4 +1,4 @@
-# Adding mods to ErrorSMP Mod Detector
+# Adding mods to TestFFAModDetector
 
 Everything lives in one file now: `config.yml` (bundled at
 `src/main/resources/config.yml`, or the deployed copy in the plugin's data folder -

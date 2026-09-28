@@ -8,7 +8,7 @@ import net.kyori.adventure.text.format.TextDecoration;
 
 public final class Msg {
     public static final TextColor ACCENT = TextColor.color((int)7259903);
-    public static final String BRAND = "ErrorSMP Mod Detector";
+    public static final String BRAND = "TestFFAModDetector";
 
     private Msg() {
     }

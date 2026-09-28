@@ -176,8 +176,9 @@ No `plugin.yml` platform declaration, no `folia-supported`-style flag, no Leaf s
 async-chunk API usage, no changes to `ModDetectorPlugin`'s main-thread assumptions, and no
 re-verification of the sign-probe geometry beyond the §7 checklist item. **The retarget itself
 touches `pom.xml` (one version literal) and `plugin.yml` (`api-version`) and nothing else.** The
-only code-level follow-up anywhere in the plan is the **R11** mitigation, which names an existing
-literal in `SignProbe.java` and changes no behaviour.
+only code-level follow-up anywhere in the plan is **R11**, which replaces `SignProbe`'s deprecated
+int-based block-entity constructor with the named `BlockEntityTypes.SIGN` — non-behavioural, since
+that constant resolves to the same id 7.
 
 ---
 
@@ -1151,7 +1152,7 @@ unrecoverable.
 | 2.2 | `ModCatalog`: `ticked` set, `isTicked`, `load(detectList)`, `detect(Player, scope)`, `activeDefinitions(scope)`, `TickFilter`, `listMods`/`countsByCategory(filter)`, `tickedCount`/`untickedCount`, load-time validation + warnings. | 2.1 | `mvn clean package` **will fail** at this point — `ModDetectorPlugin`/`HackCheckManager` still call the old signatures. Either fix the callers in the same step or mark the old methods `@Deprecated` for one step and delete them in 2.3. Recommended: land them together. |
 | 2.3 | `config.yml`: insert the `detect:` block + commented reference block; delete `mode:`/`blocked-mods:`; add the 7 new `hack-checks` keys; update the `mods:` header comment (which currently references blacklist mode). | — | `mvn clean package`; `/md reload`; the empty-list WARNING fires as expected. |
 | 2.4 | `ModDetectorPlugin`: `scanPassive(player, scope)`, nested passive cache, `loadCatalog` reading `detect:`, `loadHackDefinitions` partitioning into primary/full, `setDefinitions(primary, full)`, `setPassiveCache`/`setPassiveProbe` wiring, `primaryHackCount`, `totalHackCount` → full list, `configure(HackCheckSettings)`, top-level try/catch in `onEnable`/`onDisable`. | 2.2, 2.3 | `mvn clean package`; `/md reload` with a deliberately bogus `detect:` id → one clear WARNING, plugin still enabled, `/md status` still works. |
-| 2.5 | New `hackcheck/HackCheckSettings` record; `HackCheckManager`: two definition lists, `isModBypassed`, the two-stage `startCheck`/`endPass`/`finishCheck`, `passiveProbe`/`passiveCache`, the new `handlePassiveResults`, `ownsResult`, `reloadBarrier`, batch/keys-per-line from settings. **`SignProbe`: replace the bare block-entity-type literal `7` with `private static final int SIGN_BLOCK_ENTITY_TYPE_ID = 7;` plus the provenance comment (R11) — naming only, no behaviour change.** | 2.4 | `mvn clean package`; `sign-probe-debug: true` on a vanilla client → exactly the ticked mod ids appear in the debug lines, and **no second pass**. |
+| 2.5 | New `hackcheck/HackCheckSettings` record; `HackCheckManager`: two definition lists, `isModBypassed`, the two-stage `startCheck`/`endPass`/`finishCheck`, `passiveProbe`/`passiveCache`, the new `handlePassiveResults`, `ownsResult`, `reloadBarrier`, batch/keys-per-line from settings. **`SignProbe`: at `:47`, stop passing the bare block-entity-type literal `7` and pass `BlockEntityTypes.SIGN` instead, dropping the deprecated `WrapperPlayServerBlockEntityData(Vector3i, int, NBTCompound)` constructor (R11). Non-behavioural — the constant resolves to 7 — plus a one-line comment recording that `SIGN` is a *standing* sign, not a generic "any sign" handle.** | 2.4 | `mvn clean package` → no new deprecation warning from `SignProbe.java`; `sign-probe-debug: true` on a vanilla client → exactly the ticked mod ids appear in the debug lines, and **no second pass**. |
 | 2.6 | `HackCheckListener`: `scanPassive(player, PRIMARY)`, `ownsResult` guard, per-handler try/catch. | 2.5 | Vanilla client, no alert, no kick. Fabric+client-mods client, no alert, no kick, and the debug log shows tier-1 ids only. |
 | 2.7 | `ModDetectorCommand`: `detect`/`ignore` + `setDetect`, `DetectEditResult` mapping, `SUBCOMMANDS`/`MENU`, `list` marker + third arg, `status` rows, `hacks` two-tier line, tab completion. | 2.4 | `/md detect wurst` then `/md ignore wurst`; byte-diff `config.yml` — **only** item lines under `detect:` changed, all ~180 comment lines of the reference block intact. `/md detect nonexistentmod` → `UNKNOWN_MOD`, no write. |
 | 2.8 | `ModDetectorPlugin.setTicked` — the line-based editor. | 2.7 | Every `DetectEditResult` case exercised against a real file: unknown id, duplicate, `detect: []`, `detect: [a, b]` (→ `UNSUPPORTED_SHAPE`), missing `detect:` key (→ `NOT_FOUND`), read-only file (→ `IO_ERROR`). |
@@ -1273,8 +1274,12 @@ this plan). Between them all three are covered; each is narrow on purpose.*
         packet" client-side error.
 - [ ] Sign revert (`restoreBlock`) under async chunk sending: the fake sign disappears cleanly on
       both the timed-out and the answered path.
-- [ ] `grep -n "SIGN_BLOCK_ENTITY_TYPE_ID" src/main/java/.../SignProbe.java` → the literal `7` is
-      named and commented per **R11** (the mitigation must be in the file, not just in this plan).
+- [ ] `grep -n "BlockEntityTypes.SIGN" src/main/java/.../SignProbe.java` → present, and **no bare `7`
+      remains** as a block-entity type argument. Per **R11** the remedy is the named constant, not a
+      locally-named int; the fix must be in the file, not just in this plan.
+- [ ] `mvn clean package` → no deprecation warning at `SignProbe.java:47`. The int-taking
+      `WrapperPlayServerBlockEntityData` constructor is `Deprecated: true`; the `BlockEntityType`
+      overload is not. The build should be clean after the swap.
 
 **A. Known-cheat client (the escalation case)**
 - [ ] Client with a `punish: true` mod + 2-3 unticked mods (e.g. Meteor + Sodium + Xaero).
@@ -1536,40 +1541,91 @@ and the new code adds no new external API surface beyond the packet-path questio
    after our target. Therefore 1.21.11 still uses the **NBT sign block-entity format**, and the
    plugin's NBT-based sign construction/reading **remains valid.** No migration to a new component
    type is required.
-4. **`SignProbe`'s hardcoded block-entity type id `7` is correct for 1.21.11.** Confirmed against
-   ViaVersion's registry-order table
+4. **The sign block-entity type id for 1.21.11 is `7`,** and the plugin should express it as a
+   named constant rather than a literal. Confirmed against ViaVersion's registry-order table
    (`protocols/v1_17_1to1_18/data/BlockEntities1_18.java`), which lists `sign` at index 7. The first
    eight entries of that table — furnace, chest, trapped_chest, ender_chest, jukebox, dispenser,
    dropper, sign — are **all pre-1.18 types**; vanilla appends new block-entity types to the **end**
-   of the registry and has never reordered these, so index 7 is stable. Two negative findings, both
-   recorded so the question is not re-derived later: there is **no public Bukkit/Paper API** to
-   resolve a block-entity type id (`org.bukkit.UnsafeValues` in paper-api 1.21.11 exposes no
-   block-entity id accessor), and **PacketEvents ships no block-entity type mapping data** (the repo
-   has no `mappings/data` tree). The residual risk is tracked as **R11**.
+   of the registry and has never reordered these. **Independently confirmed a second way:** PacketEvents'
+   own `BlockEntityTypes` declares them in the same order, putting `SIGN` 8th at index 7. The
+   number is solid, confirmed by two sources.
+   - *How to express it:* **pass `BlockEntityTypes.SIGN`.** The int-taking
+     `WrapperPlayServerBlockEntityData(Vector3i, int, NBTCompound)` constructor is marked
+     `Deprecated: true`; the current API takes a `BlockEntityType`, and `BlockEntityTypes` is a plain
+     holder of `public static final` constants (not an enum), so naming is the intended access
+     pattern. See **R11** for the full `javap -v` evidence.
+   - *Two negative findings, retained because each is individually true but both were previously
+     over-read.* There is **no public Bukkit/Paper API** to resolve a block-entity type id
+     (`org.bukkit.UnsafeValues` in paper-api 1.21.11 exposes no block-entity id accessor), and the
+     PacketEvents **repo** has no `mappings/data` tree. Neither fact means the mapping is
+     unavailable — it ships as **compiled `BlockEntityTypes` constants inside the jar**, not as
+     external mapping data. The conclusion once drawn from these two facts, that no version-aware
+     resolution was possible, was wrong; R11 records the correction. Do not re-derive it from the
+     absence of a `mappings/data` tree.
    - *Do not try to derive protocol ids from `mcmeta` registry dumps.* The misode `mcmeta` dumps
      were checked and are **alphabetically sorted**, not registry-ordered, so they cannot be used for
      this purpose. Noted here so nobody re-attempts that derivation and trusts the result.
 
-**Net effect on the plan: no code change in Pass 1 or Pass 2 is required by the platform retarget.**
-The retarget is a dependency bump plus the `api-version` change plus the §7 A0 verification items.
-The only code-level follow-up is the R11 mitigation (naming the magic number), which is
-documentation-grade, not behavioural.
+**Net effect on the plan: the platform retarget itself requires no behavioural change.** The
+retarget is a dependency bump plus the `api-version` change plus the §7 A0 verification items. The
+one code-level follow-up is **R11** — swapping `SignProbe`'s deprecated int constructor for the
+named `BlockEntityTypes.SIGN` — which is a **non-behavioural cleanup** (the constant resolves to 7,
+so the wire bytes are identical) that retires a real risk rather than merely shrinking it.
 
-**R11 — `SignProbe`'s bare literal `7` for the sign block-entity type is an unresolvable
-protocol-level magic number.** `SignProbe` writes a `7` where a block-entity *type id* is expected.
-It is currently **correct for 1.21.11** (R10 finding 4), but there is no API that resolves it —
-neither Bukkit/Paper (`UnsafeValues` exposes no block-entity id accessor) nor PacketEvents (no
-`mappings/data` tree). The failure mode is nasty: any future Minecraft version that ever *inserts* a
-block-entity type before index 7 would silently break the sign probe — the client would simply
-ignore the malformed packet and the probe would never fire, degrading to **"nothing is ever
-detected."** That is the same class of silent failure as **R3**, and it would be hard to
-diagnose from the symptom. *Mitigation:* replace the bare literal with a well-named
-`private static final int SIGN_BLOCK_ENTITY_TYPE_ID = 7;` carrying a comment that records the
-provenance (ViaVersion's registry-order table, `sign` at index 7) **and** the append-only
-assumption it depends on, so the next reader knows what to re-verify on a version bump. *Explicitly
-rejected as a mitigation:* resolving the id dynamically by reflecting into NMS / the internals
-mapping. It is version-fragile by construction, would break on every Minecraft update, and would
-reintroduce exactly the kind of breakage R11 is documenting.
+**R11 — RESOLVED: `SignProbe`'s sign block-entity type is now the named constant
+`BlockEntityTypes.SIGN`, not a bare `7`.** This entry previously argued that the literal had to
+stay and that resolving the id dynamically was "version-fragile, breaks on every Minecraft update."
+**That recommendation is withdrawn — it rested on a false premise.** The version-aware resolution
+was assumed not to exist; it does exist, PacketEvents maintains it, and the literal the plugin was
+using sits on a **deprecated** code path. No residual risk is carried here: the item is closed.
+
+**The finding, and the evidence to re-check it.** Verified against the actual
+`packetevents-api-2.13.0.jar` in the local `~/.m2` repository with `javap -v` on
+`com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerBlockEntityData`, which
+has three public constructors:
+
+| Constructor | Status |
+| --- | --- |
+| `(Vector3i, int, NBTCompound)` | **`Deprecated: true`** — this is what `SignProbe.java:47` called |
+| `(Vector3i, protocol.world.TileEntityType, NBTCompound)` | `Deprecated: true` |
+| `(Vector3i, protocol.world.blockentity.BlockEntityType, NBTCompound)` | **not deprecated — the current API** |
+
+`com.github.retrooper.packetevents.protocol.world.blockentity.BlockEntityTypes` exposes the named
+constant `SIGN`, plus `getByName(String)`, `getById(ClientVersion, int)`, `values()`, and a
+`VersionedRegistry<BlockEntityType> getRegistry()`. The class is a plain final holder of
+`public static final` constants rather than an enum, so **naming is the intended access pattern** —
+not a workaround. *To re-check:* `javap -v -cp %USERPROFILE%\.m2\repository\com\github\retrooper\packetevents-api\2.13.0\packetevents-api-2.13.0.jar com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerBlockEntityData`
+and look for the `Deprecated: true` attribute on the int-taking constructor.
+
+**The change made.** `SignProbe` now passes `BlockEntityTypes.SIGN` instead of the literal `7`. **This
+is a cleanup, not a behavioural change** — on the current target `SIGN` resolves to 7, so the bytes
+on the wire are identical. Say it that way in the code comment too, so no reader concludes the wire
+format moved. Drop the `private static final int SIGN_BLOCK_ENTITY_TYPE_ID = 7;` constant that the
+earlier version of this entry prescribed; the named constant replaces it outright.
+
+**Second, independent confirmation that 7 was the right number.** `BlockEntityTypes`' own
+declaration order is `FURNACE, CHEST, TRAPPED_CHEST, ENDER_CHEST, JUKEBOX, DISPENSER, DROPPER,
+SIGN, HANGING_SIGN, MOB_SPAWNER, PISTON, …` — `SIGN` is the 8th entry, index **7**. That matches
+the ViaVersion registry-order table R10 already cites, so **two independent sources now agree that
+sign is 7**. R10's earlier verification of the *number* therefore holds; only the *means of expressing
+it* was wrong. `BlockEntityTypes` also already contains newer entries — `SHELF`,
+`COPPER_GOLEM_STATUE`, `POTENT_SULFUR`, `CREAKING_HEART`, `SUSPICIOUS_SAND` — which is direct
+evidence that the mapping is actively maintained across Minecraft versions.
+
+**What it buys — and note that the old residual risk is retired, not merely reduced.** The old
+residual risk was that a future Minecraft version inserting a block entity type before index 7 would
+silently break the sign probe (the client ignores the packet, the probe never fires, and the plugin
+degrades to "nothing is ever detected" — the same silent-failure class as R3). That risk is now
+**gone rather than shrunk**, because PacketEvents owns the per-version mapping and adds entries as
+Minecraft adds block entity types; the plugin no longer encodes an assumption about registry order at
+all. The literal is gone, the deprecation warning at `SignProbe.java:47` is gone, and the failure
+mode is no longer reachable from this side.
+
+**The one thing still worth knowing.** `BlockEntityTypes.SIGN` is a **standing** sign. Probing a
+hanging sign would need the separate `HANGING_SIGN` constant, and the NBT shape may differ. The
+choice of `SIGN` is therefore deliberate, not a generic "any sign" handle — worth one comment line in
+`SignProbe` so a future change to `HANGING_SIGN` is a considered decision. No design expansion: the
+plugin probes standing signs and nothing else, and that stays.
 
 **R12 — `api-version: '1.21.11'` removes the 1.21.8 fallback.** Declaring a three-part
 `api-version` is the version-correct choice for a 1.21.11 target (§0.4), but a 1.21.8 server
@@ -1590,8 +1646,9 @@ sending ever causes the fake sign to be placed, read, or reverted outside the cl
 probe silently returns no detections and the plugin looks like a clean player — degrading to
 "nothing is ever detected", the same failure class as R3 and R11. *Mitigations:* the §7 A0 items
 test the answered path and the timed-out path on a real Leaf 1.21.11 server and compare both
-against Paper; `sign-probe-debug: true` is the supported diagnostic; the `SIGN_BLOCK_ENTITY_TYPE_ID`
-naming in R11 keeps the other silent-failure vector documented in the file itself. *Residual risk
+against Paper; `sign-probe-debug: true` is the supported diagnostic; the other silent-failure
+vector — a wrongly-encoded block-entity type — is now closed by **R11**, which resolves the type
+through PacketEvents per client version instead of hardcoding it. *Residual risk
 accepted* — Leaf is the only platform in scope with this behaviour, the plugin must stay portable,
 and a Paper-only CI server cannot exercise it, so this is verified manually on the target server
 rather than in the build.

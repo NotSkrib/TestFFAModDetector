@@ -1,9 +1,9 @@
-name: ErrorSMPModDetector
+name: TestFFAModDetector
 version: '${project.version}'
 main: xyz.nim.modDetectorPlugin.ModDetectorPlugin
-api-version: '1.21'
-author: ErrorSMP
-description: ErrorSMP Mod Detector - channel-based + sign-probe mod/hack-client detection.
+api-version: '1.21.11'
+author: TestFFA
+description: TestFFAModDetector - channel-based + sign-probe mod/hack-client detection.
 # Legacy Bukkit plugin type deliberately, NOT paper-plugin.yml: Paper loads all
 # paper-plugin.yml plugins in an earlier phase than all plugin.yml (legacy Bukkit)
 # plugins, so a depend: on a legacy-Bukkit plugin (packetevents) from a Paper-type
@@ -13,18 +13,18 @@ depend: [packetevents]
 
 commands:
   moddetector:
-    description: ErrorSMP Mod Detector - status, manual checks, and reload.
+    description: TestFFAModDetector - status, manual checks, and reload.
     aliases: [md]
     usage: /moddetector <help|status|hacks|check|history|list|allow|disallow|reload>
-    permission: moddetector.admin
+    permission: testffa.admin
 
 permissions:
-  moddetector.admin:
+  testffa.admin:
     description: Use /moddetector admin subcommands.
     default: op
-  moddetector.alerts:
+  testffa.alerts:
     description: Receive alerts when a player is detected.
     default: op
-  moddetector.bypass:
+  testffa.bypass:
     description: Exempt this player from all detection.
     default: false

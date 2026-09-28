@@ -5,8 +5,8 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>xyz.nim</groupId>
-    <artifactId>errorsmp-moddetector</artifactId>
-    <version>4.2.0</version>
+    <artifactId>testffa-moddetector</artifactId>
+    <version>5.0.0</version>
     <packaging>jar</packaging>
 
     <properties>
@@ -29,7 +29,7 @@
         <dependency>
             <groupId>io.papermc.paper</groupId>
             <artifactId>paper-api</artifactId>
-            <version>1.21.8-R0.1-SNAPSHOT</version>
+            <version>1.21.11-R0.1-SNAPSHOT</version>
             <scope>provided</scope>
         </dependency>
         <dependency>

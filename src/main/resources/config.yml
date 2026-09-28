@@ -1,8 +1,8 @@
 # ============================================================
-#  ErrorSMP Mod Detector configuration
+#  TestFFAModDetector configuration
 # ============================================================
 
-# Tell staff (moddetector.alerts) in chat whenever anyone is detected, passive or sign-probe.
+# Tell staff (testffa.alerts) in chat whenever anyone is detected, passive or sign-probe.
 alert-staff: true
 detection-log:
   enabled: false

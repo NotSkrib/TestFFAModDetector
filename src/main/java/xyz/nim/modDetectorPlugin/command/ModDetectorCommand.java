@@ -106,7 +106,7 @@ TabCompleter {
 
     private void help(CommandSender commandSender) {
         commandSender.sendMessage(Msg.divider());
-        commandSender.sendMessage((Component)Component.text((String)"  ErrorSMP Mod Detector", (TextColor)Msg.ACCENT, (TextDecoration[])new TextDecoration[]{TextDecoration.BOLD}));
+        commandSender.sendMessage((Component)Component.text((String)("  " + Msg.BRAND), (TextColor)Msg.ACCENT, (TextDecoration[])new TextDecoration[]{TextDecoration.BOLD}));
         commandSender.sendMessage(Msg.divider());
         for (Entry entry : MENU) {
             Component component = ((TextComponent)Component.text((String)(" /moddetector " + entry.usage()), (TextColor)NamedTextColor.YELLOW).hoverEvent((HoverEventSource)HoverEvent.showText((Component)Component.text((String)entry.description(), (TextColor)NamedTextColor.GRAY).append((Component)(entry.needsArg() ? Component.text((String)"\nClick to fill in the command.", (TextColor)NamedTextColor.DARK_GRAY) : Component.text((String)"\nClick to fill in, then press enter.", (TextColor)NamedTextColor.DARK_GRAY)))))).clickEvent(ClickEvent.suggestCommand((String)("/moddetector " + entry.usage().split(" ")[0] + (entry.needsArg() ? " " : ""))));
@@ -117,7 +117,7 @@ TabCompleter {
 
     private void status(CommandSender commandSender) {
         commandSender.sendMessage(Msg.divider());
-        commandSender.sendMessage((Component)Component.text((String)"  ErrorSMP Mod Detector status", (TextColor)Msg.ACCENT, (TextDecoration[])new TextDecoration[]{TextDecoration.BOLD}));
+        commandSender.sendMessage((Component)Component.text((String)("  " + Msg.BRAND + " status"), (TextColor)Msg.ACCENT, (TextDecoration[])new TextDecoration[]{TextDecoration.BOLD}));
         commandSender.sendMessage(Msg.divider());
         commandSender.sendMessage(ModDetectorCommand.statRow("Known mods", Component.text((int)this.plugin.catalog().knownCount(), (TextColor)NamedTextColor.WHITE).append((Component)Component.text((String)(" (" + this.plugin.catalog().trackedCount() + " tracked)"), (TextColor)NamedTextColor.DARK_GRAY))));
         commandSender.sendMessage(ModDetectorCommand.statRow("Sign-probe definitions", (Component)Component.text((String)(this.plugin.enabledHackCount() + "/" + this.plugin.totalHackCount()), (TextColor)NamedTextColor.WHITE)));

@@ -29,6 +29,10 @@ import xyz.nim.modDetectorPlugin.hackcheck.HackDefinition;
 import xyz.nim.modDetectorPlugin.hackcheck.SignProbe;
 
 public final class HackCheckManager {
+    // The global bypass node ("<node>" exempts a player entirely, "<node>.<id>" exempts one definition).
+    // Both forms are looked up per player and per definition, so the name is built from this one constant
+    // rather than repeated - a second hardcoded copy is how a permission rename ends up half-applied.
+    private static final String BYPASS_NODE = "testffa.bypass";
     private final Plugin plugin;
     private final Map<UUID, CheckSession> activeChecks = new HashMap<UUID, CheckSession>();
     private final Set<UUID> pendingKick = new HashSet<UUID>();
@@ -154,7 +158,7 @@ public final class HackCheckManager {
 
     public void startCheck(Player player) {
         Object object;
-        if (player.hasPermission("moddetector.bypass")) {
+        if (player.hasPermission(BYPASS_NODE)) {
             this.pendingKick.remove(player.getUniqueId());
             return;
         }
@@ -169,14 +173,14 @@ public final class HackCheckManager {
         ArrayList<HackDefinition> arrayList = new ArrayList<HackDefinition>();
         for (HackDefinition hackDefinition : this.definitions) {
             boolean bl;
-            object = "moddetector.bypass." + hackDefinition.id();
+            object = BYPASS_NODE + "." + hackDefinition.id();
             boolean bl2 = bl = player.isPermissionSet((String)object) && player.hasPermission((String)object);
             if (bl) continue;
             arrayList.add(hackDefinition);
         }
         if (!this.definitions.isEmpty() && arrayList.size() < this.definitions.size()) {
             int n = this.definitions.size() - arrayList.size();
-            this.plugin.getLogger().warning("[HackCheck] " + n + "/" + this.definitions.size() + " hack definitions are bypassed for " + player.getName() + " via moddetector.bypass.<id> permissions" + (arrayList.isEmpty() ? " - ALL of them, so the sign-probe will not run at all for this player." : "."));
+            this.plugin.getLogger().warning("[HackCheck] " + n + "/" + this.definitions.size() + " hack definitions are bypassed for " + player.getName() + " via " + BYPASS_NODE + ".<id> permissions" + (arrayList.isEmpty() ? " - ALL of them, so the sign-probe will not run at all for this player." : "."));
         }
         if (arrayList.isEmpty()) {
             this.finishCheck(player, Set.of());

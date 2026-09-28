@@ -9,6 +9,7 @@ import com.github.retrooper.packetevents.protocol.nbt.NBTCompound;
 import com.github.retrooper.packetevents.protocol.nbt.NBTList;
 import com.github.retrooper.packetevents.protocol.nbt.NBTString;
 import com.github.retrooper.packetevents.protocol.nbt.NBTType;
+import com.github.retrooper.packetevents.protocol.world.blockentity.BlockEntityTypes;
 import com.github.retrooper.packetevents.protocol.world.states.WrappedBlockState;
 import com.github.retrooper.packetevents.protocol.world.states.type.StateType;
 import com.github.retrooper.packetevents.protocol.world.states.type.StateTypes;
@@ -44,7 +45,12 @@ public final class SignProbe {
 
         // No bundle. Sent individually, back to back. Order: place, data, open, CloseWindow(0), revert.
         playerManager.sendPacketSilently((Object)player, (PacketWrapper)new WrapperPlayServerBlockChange(vector3i, n));
-        playerManager.sendPacketSilently((Object)player, (PacketWrapper)new WrapperPlayServerBlockEntityData(vector3i, 7, nBTCompound));
+        // SIGN is the standing sign (BlockEntityTypes.SIGN, registry id 7). Prefer the named constant over the
+        // bare int: the int constructor is deprecated, and PacketEvents owns the per-version block-entity
+        // mapping, so this stays correct if a future version ever shifts the registry. Hanging signs are a
+        // different constant (HANGING_SIGN) and are not what this probe places - the block change above puts
+        // a standing OAK_SIGN down.
+        playerManager.sendPacketSilently((Object)player, (PacketWrapper)new WrapperPlayServerBlockEntityData(vector3i, BlockEntityTypes.SIGN, nBTCompound));
         playerManager.sendPacketSilently((Object)player, (PacketWrapper)new WrapperPlayServerOpenSignEditor(vector3i, true));
         playerManager.sendPacketSilently((Object)player, (PacketWrapper)new WrapperPlayServerCloseWindow(0));
         playerManager.sendPacketSilently((Object)player, (PacketWrapper)new WrapperPlayServerBlockChange(vector3i, 0));

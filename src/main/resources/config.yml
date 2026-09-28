@@ -8,10 +8,296 @@ detection-log:
   enabled: false
   file: "detections.jsonl"
 
-# Channel/brand passive detection (see the mods: catalog below). blacklist = everything
-# loaded counts except blocked-mods; whitelist = only ids listed in blocked-mods count.
-mode: blacklist
-blocked-mods: []
+# ============================================================
+#  What gets detected - the tick-off list
+# ============================================================
+#  Every mod id you list here is a mod this plugin looks for.
+#  Untick a mod = delete its line.  Tick a mod = add the line.
+#
+#  Two tiers:
+#    TIER 1 (this list)  - probed on every join. This is the fast path.
+#    TIER 2 (everything) - probed ONLY after tier 1 hits something, so a detection
+#                          report tells you what the client is ACTUALLY running
+#                          instead of just the first thing that tripped.
+#  Turn tier 2 off entirely with hack-checks.escalate: false further down.
+#
+#  Note the punish axis is separate: allow/disallow (or punish: in the mods:
+#  catalog below) decides whether a detection kicks. A ticked mod with
+#  punish: false is still reported, just not enforced.
+#
+#  Structural requirement: keep the key at column 0 and the items as indented
+#  "- item" lines directly beneath it. /moddetector detect and
+#  /moddetector ignore edit this block in place - if the shape changes, those
+#  commands report that they could not find the list. See ADDING-MODS.md.
+#
+#  Shipped default: every mod in the catalog that ships `punish: true`, sorted
+#  alphabetically, EXCEPT the two inert brand-anomaly entries vanilla-spoof and
+#  geyser-spoof - they signal through NO_BRAND / VANILLA_SPOOF / GEYSER_SPOOF,
+#  none of which ModCatalog.SignalSource knows, so they are no-ops today (see
+#  ADDING-MODS.md). That is 74 - 2 = 72 ids: only the mods this plugin can
+#  actually act on. Add the informational ones from the reference block below
+#  (utilities, launchers, QoL mods) if you want them reported in tier 1 too;
+#  they are still covered by tier 2 on a detection.
+detect:
+  - aristois
+  - auto-armor
+  - auto-shield-breaker
+  - autoattack
+  - autoclicker
+  - bridging-mod
+  - cart-core
+  - catlean
+  - cheatutils
+  - chest-esp
+  - chest-finder
+  - clientspoof
+  - combat-plus
+  - combatify
+  - crystal-core
+  - custom-client-brand
+  - doomsday
+  - entity-outliner
+  - ethanol
+  - exploit-preventer
+  - fcam-fork
+  - fire-client
+  - freecam
+  - gavinsmod
+  - glazed
+  - global-macros
+  - hcscr
+  - health-indicators
+  - hitrange
+  - hypnotic
+  - impact
+  - inertia
+  - jex
+  - kenzo-hack
+  - killaura
+  - konas
+  - liquidbounce
+  - lumina
+  - madxray
+  - meteor
+  - meteor-additions
+  - meteor-plus
+  - meteorist
+  - mini-hacks
+  - multi-key-bindings
+  - omniscience
+  - paradise-client
+  - pingbypass
+  - player-esp
+  - rebrand
+  - rise
+  - rusherhack
+  - salhack
+  - seedfinder
+  - shield-status
+  - sigma
+  - spawn-radar
+  - spear-core
+  - speedhack
+  - spoofing-translation
+  - teleporthack
+  - thunderhack
+  - vanilla-trap
+  - vape
+  - visible-shield-cd
+  - wallhack
+  - wave-client
+  - wurst
+  - x13-xray
+  - xray
+  - xynis
+  - zergatul-freecam
+
+# ------------------------------------------------------------
+#  Full menu of available mod ids, by category. Nothing here is
+#  read by the plugin - it exists so you can pick ids without
+#  needing /moddetector list in game. Copy any line below into
+#  the detect: list above to tick it on.
+#
+#  CHEAT (72)
+#  # aristois
+#  # auto-shield-breaker
+#  # autoattack
+#  # autoclicker
+#  # bridging-mod
+#  # cart-core
+#  # catlean
+#  # cheatutils
+#  # chest-esp
+#  # chest-finder
+#  # clientspoof
+#  # combat-plus
+#  # combatify
+#  # cracked-clients
+#  # crystal-core
+#  # custom-client-brand
+#  # doomsday
+#  # entity-outliner
+#  # ethanol
+#  # exploit-preventer
+#  # fcam-fork
+#  # fire-client
+#  # freecam
+#  # gavinsmod
+#  # geyser-spoof
+#  # glazed
+#  # global-macros
+#  # hcscr
+#  # hitrange
+#  # hypnotic
+#  # impact
+#  # inertia
+#  # jex
+#  # kenzo-hack
+#  # killaura
+#  # konas
+#  # liquidbounce
+#  # lumina
+#  # madxray
+#  # meteor
+#  # meteor-additions
+#  # meteor-plus
+#  # meteorist
+#  # mini-hacks
+#  # multi-key-bindings
+#  # omniscience
+#  # paradise-client
+#  # pingbypass
+#  # player-esp
+#  # rebrand
+#  # rise
+#  # rusherhack
+#  # salhack
+#  # shield-status
+#  # sigma
+#  # spawn-radar
+#  # spear-core
+#  # speedhack
+#  # spoofing-translation
+#  # teleporthack
+#  # thunderhack
+#  # vanilla-spoof
+#  # vanilla-trap
+#  # vape
+#  # visible-shield-cd
+#  # wallhack
+#  # wave-client
+#  # wurst
+#  # x13-xray
+#  # xray
+#  # xynis
+#  # zergatul-freecam
+#  SUSPICIOUS (86)
+#  # accurate-block-placement
+#  # auto-armor
+#  # auto-elytra
+#  # auto-mace-swap
+#  # auto-tool-swap
+#  # auto-totem-light
+#  # autocart
+#  # autoeat
+#  # autofish
+#  # autoswitch
+#  # autotools
+#  # axiom
+#  # baritone
+#  # better-hitreg
+#  # bleachhack
+#  # camera-enhancements
+#  # camera-tweaks
+#  # camerautils
+#  # chest-tracker
+#  # clientcommands
+#  # clientsort
+#  # climbladdersfast
+#  # commandkeys
+#  # crash-assistant
+#  # crawl
+#  # dokko-hotbar-optimizer
+#  # easierchests
+#  # elytra-chestplate-swap
+#  # faster-block-placement
+#  # flashback
+#  # flymod
+#  # forgehax
+#  # fullbright-gamma
+#  # health-indicators
+#  # hyperium
+#  # in-game-account-switcher
+#  # inventory-control-tweaks
+#  # inventory-tabs
+#  # invmove
+#  # keep-inventory-open
+#  # language-translator
+#  # litematica
+#  # mace-attack-assistance
+#  # malilib
+#  # maplink
+#  # no-brand
+#  # no-delay
+#  # no-jump-delay
+#  # perspective
+#  # pixel-minimap
+#  # player-highlighter
+#  # playerlocator
+#  # playertracker
+#  # precise-block-placing
+#  # pro-placer
+#  # quick-turn
+#  # quickhotkeys
+#  # reach-circle
+#  # replay-mod
+#  # schematic-printer
+#  # see-through-lava
+#  # seedcracker
+#  # seedfinder
+#  # shoulder-surfing
+#  # slot-swap
+#  # smart-block-placement
+#  # stepup
+#  # tnthelper
+#  # trade-cycling
+#  # trajectory-preview
+#  # tweakermore
+#  # tweakeroo
+#  # uiutils
+#  # viafabricplus
+#  # visible-barriers
+#  # vivecraft
+#  # voxelmap
+#  # voyagermap
+#  # world-downloader
+#  # world-preview
+#  # worldedit-cui
+#  # worldtools
+#  # xaero-chest-tracker
+#  # xaero-minimap-translate
+#  # xaeroplus
+#  # xaeros-freelook
+#  LAUNCHER (7)
+#  # badlion
+#  # feather
+#  # geyser
+#  # labymod
+#  # lunar
+#  # prismlauncher
+#  # salwyrr
+#  UTILITY (9)
+#  # distant-horizons
+#  # fabric
+#  # forge
+#  # iris
+#  # optifine
+#  # replaymod
+#  # sodium
+#  # xaero-minimap
+#  # xaero-worldmap
+#  UNKNOWN (0)
+# ------------------------------------------------------------
 
 # Add your own channel/brand mods here without editing the mods: catalog below, e.g.:
 # custom-mods:
@@ -39,6 +325,40 @@ hack-checks:
   # kick-message above is still the final fallback if this is also empty.
   default-punishments: []
 
+  # Ticks after join before the tier-1 passive (channel/brand) scan runs. 0 = next tick.
+  passive-delay-ticks: 5
+
+  # How long a single sign batch waits for the client's reply before giving up on it. A
+  # batch that times out contributes NO detections - a client that never answers is not
+  # evidence of anything, so this is not an escalation trigger either.
+  timeout-ticks: 40
+
+  # Delay between sign batches. Raise it if a large catalogue makes the probe burst
+  # noticeable to players; 0 sends batches back to back.
+  between-batch-ticks: 0
+
+  # Definitions packed onto one fake sign, and how many go on one of its 4 lines.
+  # Batching at 80/sign (20/line) is what this plugin has always shipped. Packing more
+  # blows past the real ~384-char protocol cap per line (real key strings run 40-60
+  # chars); anything past that point is silently truncated by the safe reader in
+  # HackCheckPacketListener and reads back as "detected" for every player, hack or not.
+  # 20/line is the safe maximum - raising either value re-arms that failure mode.
+  batch-size: 80
+  keys-per-line: 20
+
+  # Escalation. true = a tier-1 hit (sign probe or passive) immediately runs a second
+  # pass over the mods NOT in the detect: list, so one report names everything the
+  # client is actually running instead of just the first thing that tripped. Those
+  # extra definitions are disjoint from tier 1's, so nothing is probed twice.
+  # false = tier 1 only: faster for a detected player, but the report names only ticked
+  # mods. This one flag is both the escalation switch and the speed/completeness switch.
+  escalate: true
+
+  # Floodgate/Bedrock clients can't answer a sign probe, so skip them entirely - on both
+  # the passive scan and the active probe, not just the active one.
+  skip-bedrock: true
+  bedrock-name-prefix: "."
+
   on-join:
     enabled: true
     delay-ticks: 20
@@ -64,7 +384,8 @@ hacks: {}
 
 # ============================================================
 #  Mod database: channel/brand passive detection + sign-probe signals for every known
-#  mod. blacklist mode (default above) tracks everything here except blocked-mods.
+#  mod. This is the signal database the detect: list above indexes into - being listed
+#  here does NOT mean a mod is probed on join, only that it CAN be. Tick it above.
 # ============================================================
 mods:
 

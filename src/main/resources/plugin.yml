@@ -3,7 +3,7 @@ version: '${project.version}'
 main: xyz.nim.modDetectorPlugin.ModDetectorPlugin
 api-version: '1.21.11'
 author: TestFFA
-description: TestFFAModDetector - channel-based + sign-probe mod/hack-client detection.
+description: TestFFAModDetector - channel-based + sign-probe mod/hack-client detection, + two-tier detect list.
 # Legacy Bukkit plugin type deliberately, NOT paper-plugin.yml: Paper loads all
 # paper-plugin.yml plugins in an earlier phase than all plugin.yml (legacy Bukkit)
 # plugins, so a depend: on a legacy-Bukkit plugin (packetevents) from a Paper-type
@@ -15,7 +15,7 @@ commands:
   moddetector:
     description: TestFFAModDetector - status, manual checks, and reload.
     aliases: [md]
-    usage: /moddetector <help|status|hacks|check|history|list|allow|disallow|reload>
+    usage: /moddetector <help|status|hacks|check|history|list|allow|disallow|detect|ignore|reload>
     permission: testffa.admin
 
 permissions:

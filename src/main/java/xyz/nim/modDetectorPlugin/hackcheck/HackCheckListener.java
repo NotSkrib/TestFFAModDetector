@@ -15,6 +15,7 @@ import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.plugin.Plugin;
 import xyz.nim.modDetectorPlugin.ModDetectorPlugin;
+import xyz.nim.modDetectorPlugin.catalog.DetectionScope;
 import xyz.nim.modDetectorPlugin.hackcheck.HackCheckManager;
 
 public final class HackCheckListener
@@ -41,25 +42,23 @@ implements Listener {
 
     @EventHandler
     public void onJoin(PlayerJoinEvent playerJoinEvent) {
-        Player player = playerJoinEvent.getPlayer();
+        try {
+            this.handleJoin(playerJoinEvent.getPlayer());
+        }
+        catch (Throwable throwable) {
+            this.plugin.getLogger().warning("[HackCheck] onJoin failed for " + playerJoinEvent.getPlayer().getName() + ": " + throwable);
+        }
+    }
+
+    private void handleJoin(Player player) {
         boolean bl = !player.hasPlayedBefore();
         this.firstJoinSeen.add(player.getUniqueId());
-        Bukkit.getScheduler().runTaskLater(this.plugin, () -> {
-            if (!player.isOnline() || !this.firstJoinSeen.contains(player.getUniqueId())) {
-                return;
-            }
-            Set<String> set = ((ModDetectorPlugin)this.plugin).scanPassive(player);
-            if (set.isEmpty()) {
-                return;
-            }
-            if (this.manager.willHandleKick(player.getUniqueId())) {
-                return;
-            }
-            ((ModDetectorPlugin)this.plugin).handlePassiveResults(player, set);
-        }, (long)this.passiveDelayTicks);
+        Bukkit.getScheduler().runTaskLater(this.plugin, () -> this.runPassive(player), (long)this.passiveDelayTicks);
         if (!this.onJoinEnabled || this.onlyFirstJoin && !bl) {
             return;
         }
+        // markPending must run before the delayed startCheck: it is what tells the passive task
+        // that an active pipeline already owns this player's result.
         this.manager.markPending(player.getUniqueId());
         Bukkit.getScheduler().runTaskLater(this.plugin, () -> {
             if (player.isOnline() && this.firstJoinSeen.contains(player.getUniqueId())) {
@@ -68,25 +67,57 @@ implements Listener {
         }, (long)this.onJoinDelayTicks);
     }
 
+    private void runPassive(Player player) {
+        try {
+            if (!player.isOnline() || !this.firstJoinSeen.contains(player.getUniqueId())) {
+                return;
+            }
+            // Tier 1 only. This single argument is the whole design: if the passive scan read the
+            // full catalog, every vanilla/Fabric client would trip on its own brand string and
+            // escalate on every join, which is the old behaviour with extra steps.
+            Set<String> set = ((ModDetectorPlugin)this.plugin).scanPassive(player, DetectionScope.PRIMARY);
+            if (set.isEmpty()) {
+                return;
+            }
+            if (this.manager.ownsResult(player.getUniqueId())) {
+                return;
+            }
+            ((ModDetectorPlugin)this.plugin).handlePassiveResults(player, set);
+        }
+        catch (Throwable throwable) {
+            this.plugin.getLogger().warning("[HackCheck] passive scan failed for " + player.getName() + ": " + throwable);
+        }
+    }
+
     @EventHandler
     public void onQuit(PlayerQuitEvent playerQuitEvent) {
-        this.firstJoinSeen.remove(playerQuitEvent.getPlayer().getUniqueId());
-        this.manager.cancelCheck(playerQuitEvent.getPlayer().getUniqueId());
-        ((ModDetectorPlugin)this.plugin).clearCachedResults(playerQuitEvent.getPlayer().getUniqueId());
+        try {
+            this.firstJoinSeen.remove(playerQuitEvent.getPlayer().getUniqueId());
+            this.manager.cancelCheck(playerQuitEvent.getPlayer().getUniqueId());
+            ((ModDetectorPlugin)this.plugin).clearCachedResults(playerQuitEvent.getPlayer().getUniqueId());
+        }
+        catch (Throwable throwable) {
+            this.plugin.getLogger().warning("[HackCheck] onQuit failed for " + playerQuitEvent.getPlayer().getName() + ": " + throwable);
+        }
     }
 
     @EventHandler(priority=EventPriority.LOWEST, ignoreCancelled=true)
     public void onSignChange(SignChangeEvent signChangeEvent) {
-        Player player = signChangeEvent.getPlayer();
-        if (!this.manager.isChecking(player.getUniqueId())) {
-            return;
+        try {
+            Player player = signChangeEvent.getPlayer();
+            if (!this.manager.isChecking(player.getUniqueId())) {
+                return;
+            }
+            String[] stringArray = new String[4];
+            for (int i = 0; i < 4; ++i) {
+                Component component = signChangeEvent.line(i);
+                stringArray[i] = component == null ? "" : PlainTextComponentSerializer.plainText().serialize(component);
+            }
+            this.manager.handleSignResponse(player, signChangeEvent.getBlock().getLocation(), stringArray);
         }
-        String[] stringArray = new String[4];
-        for (int i = 0; i < 4; ++i) {
-            Component component = signChangeEvent.line(i);
-            stringArray[i] = component == null ? "" : PlainTextComponentSerializer.plainText().serialize(component);
+        catch (Throwable throwable) {
+            this.plugin.getLogger().warning("[HackCheck] onSignChange failed: " + throwable);
         }
-        this.manager.handleSignResponse(player, signChangeEvent.getBlock().getLocation(), stringArray);
     }
 }
 

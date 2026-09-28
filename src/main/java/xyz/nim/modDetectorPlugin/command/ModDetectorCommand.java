@@ -28,8 +28,8 @@ import xyz.nim.modDetectorPlugin.catalog.ModCatalog;
 public final class ModDetectorCommand
 implements CommandExecutor,
 TabCompleter {
-    private static final List<String> SUBCOMMANDS = List.of("help", "status", "hacks", "check", "history", "list", "allow", "disallow", "reload");
-    private static final List<Entry> MENU = List.of(new Entry("status", "Plugin, catalog, and enforcement status", false), new Entry("check <player>", "Run a full check on a player right now", true), new Entry("history <player>", "Last detection result recorded for a player", true), new Entry("list [category]", "Browse the mod database by category", true), new Entry("allow <mod>", "Stop kicking for a mod (still logged/alerted)", true), new Entry("disallow <mod>", "Make a mod grounds for a kick again", true), new Entry("hacks", "Sign-probe definitions enabled / total", false), new Entry("reload", "Reload config.yml (settings + mod database)", false));
+    private static final List<String> SUBCOMMANDS = List.of("help", "status", "hacks", "check", "history", "list", "allow", "disallow", "detect", "ignore", "reload");
+    private static final List<Entry> MENU = List.of(new Entry("status", "Plugin, catalog, and enforcement status", false), new Entry("check <player>", "Run a full check on a player right now", true), new Entry("history <player>", "Last detection result recorded for a player", true), new Entry("list [category] [all|ticked|unticked]", "Browse the mod database by category", true), new Entry("allow <mod>", "Punish axis: stop kicking for a mod (still detected/alerted)", true), new Entry("disallow <mod>", "Punish axis: make a mod grounds for a kick again", true), new Entry("detect <mod>", "Detect axis: TICK a mod on - add it to the detect: list (tier 1)", true), new Entry("ignore <mod>", "Detect axis: UNTICK a mod - only tier 2 escalation covers it", true), new Entry("hacks", "Sign-probe definitions enabled / total", false), new Entry("reload", "Reload config.yml (settings + mod database)", false));
     private final ModDetectorPlugin plugin;
 
     public ModDetectorCommand(ModDetectorPlugin modDetectorPlugin) {
@@ -51,7 +51,9 @@ TabCompleter {
                 break;
             }
             case "hacks": {
-                commandSender.sendMessage(Msg.prefixed(Component.text((String)"Enabled for /moddetector check: ", (TextColor)NamedTextColor.GRAY).append((Component)Component.text((String)(this.plugin.enabledHackCount() + "/" + this.plugin.totalHackCount()), (TextColor)NamedTextColor.YELLOW))));
+                ModDetectorCommand.stat(commandSender, "Enabled for /moddetector check", this.plugin.enabledHackCount() + "/" + this.plugin.totalHackCount());
+                ModDetectorCommand.stat(commandSender, "Tier 1 (detect list)", this.plugin.primaryHackCount() + "/" + this.plugin.totalHackCount());
+                ModDetectorCommand.stat(commandSender, "Tier 2 (full catalog)", String.valueOf(this.plugin.totalHackCount()));
                 break;
             }
             case "check": {
@@ -84,6 +86,14 @@ TabCompleter {
                 this.setPunish(commandSender, stringArray, true);
                 break;
             }
+            case "detect": {
+                this.setDetect(commandSender, stringArray, true);
+                break;
+            }
+            case "ignore": {
+                this.setDetect(commandSender, stringArray, false);
+                break;
+            }
             case "reload": {
                 this.plugin.reloadAll();
                 commandSender.sendMessage(Msg.prefixed((Component)Component.text((String)"Config + catalog reloaded.", (TextColor)NamedTextColor.GREEN)));
@@ -104,6 +114,14 @@ TabCompleter {
         return Component.text((String)(" " + string + ": "), (TextColor)NamedTextColor.GRAY).append(component);
     }
 
+    private static void detectLine(CommandSender commandSender, String display, String suffix, TextColor color) {
+        commandSender.sendMessage(Msg.prefixed(Component.text((String)display, (TextColor)NamedTextColor.WHITE).append((Component)Component.text((String)(" " + suffix), (TextColor)color))));
+    }
+
+    private static void stat(CommandSender commandSender, String label, String value) {
+        commandSender.sendMessage(Msg.prefixed(Component.text((String)(label + ": "), (TextColor)NamedTextColor.GRAY).append((Component)Component.text((String)value, (TextColor)NamedTextColor.YELLOW))));
+    }
+
     private void help(CommandSender commandSender) {
         commandSender.sendMessage(Msg.divider());
         commandSender.sendMessage((Component)Component.text((String)("  " + Msg.BRAND), (TextColor)Msg.ACCENT, (TextDecoration[])new TextDecoration[]{TextDecoration.BOLD}));
@@ -119,7 +137,9 @@ TabCompleter {
         commandSender.sendMessage(Msg.divider());
         commandSender.sendMessage((Component)Component.text((String)("  " + Msg.BRAND + " status"), (TextColor)Msg.ACCENT, (TextDecoration[])new TextDecoration[]{TextDecoration.BOLD}));
         commandSender.sendMessage(Msg.divider());
-        commandSender.sendMessage(ModDetectorCommand.statRow("Known mods", Component.text((int)this.plugin.catalog().knownCount(), (TextColor)NamedTextColor.WHITE).append((Component)Component.text((String)(" (" + this.plugin.catalog().trackedCount() + " tracked)"), (TextColor)NamedTextColor.DARK_GRAY))));
+        commandSender.sendMessage(ModDetectorCommand.statRow("Detect list", Component.text((String)(this.plugin.catalog().tickedCount() + "/" + this.plugin.catalog().knownCount()), (TextColor)NamedTextColor.WHITE).append((Component)Component.text((String)" ticked", (TextColor)NamedTextColor.DARK_GRAY))));
+        commandSender.sendMessage(ModDetectorCommand.statRow("Tier 2 probes", (Component)Component.text((String)(this.plugin.totalHackCount() + " definitions"), (TextColor)NamedTextColor.WHITE)).append((Component)Component.text((String)(" (tier 1: " + this.plugin.primaryHackCount() + ")"), (TextColor)NamedTextColor.DARK_GRAY)));
+        commandSender.sendMessage(ModDetectorCommand.statRow("Escalation", ModDetectorCommand.bool(this.plugin.escalateOnDetection(), "on - tier 1 hit runs the full catalog", "off - tier 1 only")));
         commandSender.sendMessage(ModDetectorCommand.statRow("Sign-probe definitions", (Component)Component.text((String)(this.plugin.enabledHackCount() + "/" + this.plugin.totalHackCount()), (TextColor)NamedTextColor.WHITE)));
         commandSender.sendMessage(ModDetectorCommand.statRow("Sign-probe", ModDetectorCommand.bool(this.plugin.signProbeActive(), "active", "disabled")));
         commandSender.sendMessage(ModDetectorCommand.statRow("Kick enforcement", ModDetectorCommand.bool(this.plugin.kickEnabled(), "enabled", "alert-only")));
@@ -180,25 +200,88 @@ TabCompleter {
         }
     }
 
-    private void list(CommandSender commandSender, String[] stringArray) {
+    // The detect axis, kept deliberately distinct from the punish axis above: detect/ignore answers
+    // "is this mod looked for at all?", allow/disallow answers "does finding it kick?". They are
+    // independent, and a ticked-but-allowed mod is a perfectly normal combination.
+    private void setDetect(CommandSender commandSender, String[] stringArray, boolean ticked) {
+        String string = ticked ? "detect" : "ignore";
         if (stringArray.length < 2) {
-            commandSender.sendMessage(Msg.prefixed(Component.text((String)"Mod database, by category ", (TextColor)NamedTextColor.GRAY).append((Component)Component.text((String)"(/moddetector list <category>)", (TextColor)NamedTextColor.DARK_GRAY))));
-            for (Map.Entry<ModCatalog.Category, Integer> entry : this.plugin.catalog().countsByCategory().entrySet()) {
+            commandSender.sendMessage(Msg.error("Usage: /moddetector " + string + " <mod-id>"));
+            return;
+        }
+        String string2 = stringArray[1].toLowerCase();
+        if (!this.plugin.knownSignalIds().contains(string2)) {
+            commandSender.sendMessage(Msg.error("Unknown mod id '" + string2 + "'.").append((Component)Component.text((String)" Hover an entry in ", (TextColor)NamedTextColor.GRAY)).append((Component)Component.text((String)"/moddetector list <category>", (TextColor)NamedTextColor.YELLOW)).append((Component)Component.text((String)" to see its id.", (TextColor)NamedTextColor.GRAY)));
+            return;
+        }
+        switch (this.plugin.setTicked(string2, ticked)) {
+            case OK: {
+                ModDetectorCommand.detectLine(commandSender, this.plugin.displayFor(string2), ticked ? "is ticked - probed in tier 1." : "is unticked - only tier 2 escalation covers it.", ticked ? NamedTextColor.GREEN : NamedTextColor.YELLOW);
+                break;
+            }
+            case ALREADY_TICKED: {
+                ModDetectorCommand.detectLine(commandSender, this.plugin.displayFor(string2), "is already in the detect: list.", NamedTextColor.GRAY);
+                break;
+            }
+            case NOT_TICKED: {
+                ModDetectorCommand.detectLine(commandSender, this.plugin.displayFor(string2), "isn't in the detect: list.", NamedTextColor.GRAY);
+                break;
+            }
+            case UNSUPPORTED_SHAPE: {
+                commandSender.sendMessage(Msg.error("The detect: list in config.yml isn't in the block form this command edits. Use the detect: key with one \"- id\" per line (see ADDING-MODS.md)."));
+                break;
+            }
+            case NOT_FOUND: {
+                commandSender.sendMessage(Msg.error("Couldn't find a detect: list in config.yml to edit. Keep the bundled structure - see ADDING-MODS.md."));
+                break;
+            }
+            case IO_ERROR: {
+                commandSender.sendMessage(Msg.error("Failed to read/write config.yml - check the console for details."));
+            }
+        }
+    }
+
+    private void list(CommandSender commandSender, String[] stringArray) {
+        ModCatalog.TickFilter tickFilter = ModCatalog.TickFilter.ALL;
+        String string = null;
+        if (stringArray.length >= 3) {
+            tickFilter = switch (stringArray[2].toLowerCase()) {
+                case "ticked", "tick", "on" -> ModCatalog.TickFilter.TICKED;
+                case "unticked", "untick", "off" -> ModCatalog.TickFilter.UNTICKED;
+                case "all" -> ModCatalog.TickFilter.ALL;
+                default -> {
+                    commandSender.sendMessage(Msg.error("Filter must be one of: all, ticked, unticked"));
+                    yield null;
+                }
+            };
+            if (tickFilter == null) {
+                return;
+            }
+        }
+        if (stringArray.length >= 2) {
+            string = stringArray[1];
+        }
+        if (string == null) {
+            commandSender.sendMessage(Msg.prefixed(Component.text((String)"Mod database, by category ", (TextColor)NamedTextColor.GRAY).append((Component)Component.text((String)"(/moddetector list <category> [all|ticked|unticked])", (TextColor)NamedTextColor.DARK_GRAY))));
+            for (Map.Entry<ModCatalog.Category, Integer> entry : this.plugin.catalog().countsByCategory(ModCatalog.TickFilter.ALL).entrySet()) {
+                int n = this.plugin.catalog().countsByCategory(ModCatalog.TickFilter.TICKED).getOrDefault(entry.getKey(), 0);
                 Component component = ((TextComponent)Component.text((String)(" " + entry.getKey().name()), (TextColor)NamedTextColor.YELLOW).clickEvent(ClickEvent.suggestCommand((String)("/moddetector list " + entry.getKey().name().toLowerCase())))).hoverEvent((HoverEventSource)HoverEvent.showText((Component)Component.text((String)("Click to browse " + entry.getKey().name()), (TextColor)NamedTextColor.GRAY)));
-                commandSender.sendMessage(component.append((Component)Component.text((String)(": " + String.valueOf(entry.getValue())), (TextColor)NamedTextColor.WHITE)));
+                commandSender.sendMessage(component.append((Component)Component.text((String)(": " + String.valueOf(entry.getValue())), (TextColor)NamedTextColor.WHITE)).append((Component)Component.text((String)(" (" + n + " ticked)"), (TextColor)NamedTextColor.DARK_GRAY)));
             }
             return;
         }
-        List<ModCatalog.ModDef> list = this.plugin.catalog().listMods(stringArray[1]);
+        List<ModCatalog.ModDef> list = this.plugin.catalog().listMods(string, tickFilter);
         if (list.isEmpty()) {
-            commandSender.sendMessage(Msg.prefixed((Component)Component.text((String)("No tracked mods in category '" + stringArray[1] + "'."), (TextColor)NamedTextColor.GRAY)));
+            commandSender.sendMessage(Msg.prefixed((Component)Component.text((String)("No " + ModDetectorCommand.filterName(tickFilter) + " mods in category '" + string + "'."), (TextColor)NamedTextColor.GRAY)));
             return;
         }
-        commandSender.sendMessage(Msg.prefixed((Component)Component.text((String)(list.size() + " tracked mod(s) in " + stringArray[1].toUpperCase() + ":"), (TextColor)NamedTextColor.GRAY)));
+        commandSender.sendMessage(Msg.prefixed((Component)Component.text((String)(list.size() + " " + ModDetectorCommand.filterName(tickFilter) + " mod(s) in " + string.toUpperCase() + ":"), (TextColor)NamedTextColor.GRAY)));
         TextComponent textComponent = Component.empty();
         for (int i = 0; i < list.size(); ++i) {
             ModCatalog.ModDef modDef = list.get(i);
-            Component component = Component.text((String)modDef.display(), (TextColor)NamedTextColor.YELLOW).hoverEvent((HoverEventSource)HoverEvent.showText((Component)Component.text((String)modDef.id(), (TextColor)NamedTextColor.DARK_GRAY).append((Component)Component.text((String)("\npunish: " + modDef.punish()), (TextColor)(modDef.punish() ? NamedTextColor.RED : NamedTextColor.GREEN)))));
+            boolean ticked2 = this.plugin.catalog().isTicked(modDef.id());
+            Component component = ModDetectorCommand.bool(ticked2, modDef.display(), modDef.display())
+                    .hoverEvent((HoverEventSource)HoverEvent.showText(ModDetectorCommand.modHover(modDef, ticked2)));
             textComponent = (TextComponent)textComponent.append(component);
             if (i >= list.size() - 1) continue;
             textComponent = (TextComponent)textComponent.append((Component)Component.text((String)", ", (TextColor)NamedTextColor.DARK_GRAY));
@@ -206,9 +289,32 @@ TabCompleter {
         commandSender.sendMessage((Component)textComponent);
     }
 
+    // Hover carries the detail (id, both axes, which tier it would be probed in); the visible
+    // marker carries the answer, because hover does not exist in the console or in a log paste.
+    private static Component modHover(ModCatalog.ModDef modDef, boolean ticked) {
+        TextColor tickColor = ticked ? NamedTextColor.GREEN : NamedTextColor.RED;
+        TextColor punishColor = modDef.punish() ? NamedTextColor.RED : NamedTextColor.GREEN;
+        String tier = ticked ? "probed every join (tier 1)" : "probed only after a tier-1 hit (tier 2)";
+        Component component = Component.text((String)modDef.id(), (TextColor)NamedTextColor.DARK_GRAY);
+        component = component.append((Component)Component.text((String)("\nticked: " + ticked), tickColor));
+        component = component.append((Component)Component.text((String)("\npunish: " + modDef.punish()), punishColor));
+        return component.append((Component)Component.text((String)("\n" + tier), (TextColor)NamedTextColor.DARK_GRAY));
+    }
+
+    private static String filterName(ModCatalog.TickFilter tickFilter) {
+        return switch (tickFilter) {
+            case ALL -> "known";
+            case TICKED -> "ticked";
+            case UNTICKED -> "unticked";
+        };
+    }
+
     public List<String> onTabComplete(CommandSender commandSender, Command command, String string, String[] stringArray) {
         if (stringArray.length == 1) {
             return ModDetectorCommand.prefixMatch(SUBCOMMANDS, stringArray[0]);
+        }
+        if (stringArray.length == 3 && "list".equalsIgnoreCase(stringArray[0])) {
+            return ModDetectorCommand.prefixMatch(List.of("all", "ticked", "unticked"), stringArray[2]);
         }
         if (stringArray.length == 2) {
             return switch (stringArray[0].toLowerCase()) {
@@ -221,6 +327,7 @@ TabCompleter {
                 }
                 case "list" -> ModDetectorCommand.prefixMatch(List.of("cheat", "suspicious", "launcher", "utility", "unknown"), stringArray[1]);
                 case "allow", "disallow" -> ModDetectorCommand.prefixMatch(this.plugin.catalog().allIds(), stringArray[1]);
+                case "detect", "ignore" -> ModDetectorCommand.prefixMatch(new ArrayList<String>(this.plugin.knownSignalIds()), stringArray[1]);
                 default -> List.of();
             };
         }

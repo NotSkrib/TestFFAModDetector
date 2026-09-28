@@ -2,7 +2,6 @@ package xyz.nim.modDetectorPlugin.hackcheck;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -13,6 +12,7 @@ import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.BiConsumer;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import net.kyori.adventure.text.Component;
@@ -24,8 +24,10 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.scheduler.BukkitTask;
+import xyz.nim.modDetectorPlugin.catalog.DetectionScope;
 import xyz.nim.modDetectorPlugin.hackcheck.BedrockDetector;
 import xyz.nim.modDetectorPlugin.hackcheck.HackDefinition;
+import xyz.nim.modDetectorPlugin.hackcheck.HackCheckSettings;
 import xyz.nim.modDetectorPlugin.hackcheck.SignProbe;
 
 public final class HackCheckManager {
@@ -37,8 +39,13 @@ public final class HackCheckManager {
     private final Map<UUID, CheckSession> activeChecks = new HashMap<UUID, CheckSession>();
     private final Set<UUID> pendingKick = new HashSet<UUID>();
     private final Random random = new Random();
-    private List<HackDefinition> definitions = List.of();
-    private Function<UUID, Set<String>> channelMods = uUID -> Set.of();
+    // Tier 1 is the ticked detect: list; tier 2 is the whole catalog. Tier 2 only ever probes
+    // definitionsFull MINUS definitionsPrimary, so no definition is put on a sign twice for one
+    // check and the union of the two passes is exactly the old single full-catalog result.
+    private List<HackDefinition> definitionsPrimary = List.of();
+    private List<HackDefinition> definitionsFull = List.of();
+    private BiFunction<UUID, DetectionScope, Set<String>> passiveCache = (uUID, scope) -> Set.of();
+    private BiFunction<Player, DetectionScope, Set<String>> passiveProbe = (player, scope) -> Set.of();
     private Function<String, String> displayResolver = string -> string;
     private Predicate<String> punishResolver = string -> true;
     private Function<String, List<String>> punishmentResolver = string -> List.of();
@@ -50,17 +57,27 @@ public final class HackCheckManager {
     private boolean debug = false;
     private boolean skipBedrock = true;
     private String bedrockNamePrefix = ".";
+    private boolean escalate = true;
+    // Protocol-driven defaults, mirroring the hardcoded values this plugin shipped with until
+    // they became configurable. The cap is 4 sign lines x keysPerLine definitions.
+    private int batchSize = 80;
+    private int keysPerLine = 20;
 
     public HackCheckManager(Plugin plugin) {
         this.plugin = plugin;
     }
 
-    public void setDefinitions(List<HackDefinition> list) {
-        this.definitions = list;
+    public void setDefinitions(List<HackDefinition> list, List<HackDefinition> list2) {
+        this.definitionsPrimary = list;
+        this.definitionsFull = list2;
     }
 
-    public void setChannelMods(Function<UUID, Set<String>> function) {
-        this.channelMods = function;
+    public void setPassiveCache(BiFunction<UUID, DetectionScope, Set<String>> biFunction) {
+        this.passiveCache = biFunction;
+    }
+
+    public void setPassiveProbe(BiFunction<Player, DetectionScope, Set<String>> biFunction) {
+        this.passiveProbe = biFunction;
     }
 
     public void setOnResult(BiConsumer<Player, Set<String>> biConsumer) {
@@ -79,11 +96,27 @@ public final class HackCheckManager {
         this.punishmentResolver = function == null ? string -> List.of() : function;
     }
 
-    public void handlePassiveResults(Player player, Set<String> set) {
-        this.pendingKick.remove(player.getUniqueId());
-        this.onResult.accept(player, set);
-        String string = this.join(set);
-        this.executePunishment(player, set, string, string);
+    public void handlePassiveResults(Player player, Set<String> tier1) {
+        UUID uuid = player.getUniqueId();
+        // Both guards precede the alert because a tier-1-only report is a partial report: telling
+        // staff "detected: x" a second before the full list arrives is worse than saying nothing.
+        if (player.hasPermission(BYPASS_NODE)) {
+            this.pendingKick.remove(uuid);
+            return;
+        }
+        if (this.skipBedrock && BedrockDetector.isBedrock(player, this.bedrockNamePrefix)) {
+            this.pendingKick.remove(uuid);
+            return;
+        }
+        HashSet<String> hashSet = new HashSet<String>(tier1);
+        if (this.escalate && !tier1.isEmpty()) {
+            // Re-reads server-side brand/channel state, not the client, so completing the tier-2
+            // picture here costs no network traffic and no second sign-probe.
+            hashSet.addAll(this.passiveProbe.apply(player, DetectionScope.FULL));
+        }
+        this.onResult.accept(player, hashSet);
+        this.pendingKick.remove(uuid);
+        this.executePunishment(player, hashSet, this.join(Set.of()), this.join(hashSet));
     }
 
     private void executePunishment(Player player, Set<String> set, String string, String string2) {
@@ -124,14 +157,25 @@ public final class HackCheckManager {
         player.kick((Component)LegacyComponentSerializer.legacyAmpersand().deserialize(string9));
     }
 
-    public void configure(boolean bl, String string, int n, int n2, boolean bl2, boolean skipBedrock, String bedrockNamePrefix) {
-        this.kickEnabled = bl;
-        this.kickMessage = string;
-        this.timeoutTicks = Math.max(1, n);
-        this.betweenBatchTicks = Math.max(0, n2);
-        this.debug = bl2;
-        this.skipBedrock = skipBedrock;
-        this.bedrockNamePrefix = bedrockNamePrefix;
+    public void configure(HackCheckSettings hackCheckSettings) {
+        this.kickEnabled = hackCheckSettings.kick();
+        this.kickMessage = hackCheckSettings.kickMessage();
+        this.timeoutTicks = Math.max(1, hackCheckSettings.timeoutTicks());
+        this.betweenBatchTicks = Math.max(0, hackCheckSettings.betweenBatchTicks());
+        this.debug = hackCheckSettings.debug();
+        this.skipBedrock = hackCheckSettings.skipBedrock();
+        this.bedrockNamePrefix = hackCheckSettings.bedrockNamePrefix();
+        this.escalate = hackCheckSettings.escalate();
+        this.batchSize = Math.max(1, hackCheckSettings.batchSize());
+        this.keysPerLine = Math.max(1, Math.min(20, hackCheckSettings.keysPerLine()));
+    }
+
+    public void setReloadBarrier() {
+        for (CheckSession checkSession : this.activeChecks.values()) {
+            // The definition lists are about to be swapped underneath the session, so a "pass 2"
+            // assembled from the new config would not correspond to the config pass 1 ran under.
+            checkSession.reloadBarrier = true;
+        }
     }
 
     private void dbg(String string) {
@@ -140,8 +184,8 @@ public final class HackCheckManager {
         }
     }
 
-    public boolean willHandleKick(UUID uUID) {
-        return this.kickEnabled && (this.pendingKick.contains(uUID) || this.activeChecks.containsKey(uUID));
+    public boolean ownsResult(UUID uUID) {
+        return this.pendingKick.contains(uUID) || this.activeChecks.containsKey(uUID);
     }
 
     public void markPending(UUID uUID) {
@@ -157,7 +201,6 @@ public final class HackCheckManager {
     }
 
     public void startCheck(Player player) {
-        Object object;
         if (player.hasPermission(BYPASS_NODE)) {
             this.pendingKick.remove(player.getUniqueId());
             return;
@@ -167,44 +210,145 @@ public final class HackCheckManager {
         }
         if (this.skipBedrock && BedrockDetector.isBedrock(player, this.bedrockNamePrefix)) {
             this.dbg("skipping active sign-probe for " + player.getName() + " (Bedrock/Floodgate)");
-            this.finishCheck(player, Set.of());
+            // Report explicitly empty rather than merging the passive scan: a Bedrock client cannot
+            // answer a sign probe at all, so anything it "matched" would be a false positive. The
+            // empty result still releases a waiting /moddetector check sender.
+            this.pendingKick.remove(player.getUniqueId());
+            this.onResult.accept(player, Set.of());
             return;
         }
+        List<HackDefinition> arrayList = this.withoutBypassed(player, this.definitionsPrimary);
+        if (arrayList.isEmpty()) {
+            // Nothing active to probe. Still escalate if the passive tier-1 picture is non-empty -
+            // a client can be identified purely by brand/channel with no sign reply needed.
+            this.endPass(player, new CheckSession(player.getUniqueId(), DetectionScope.PRIMARY));
+            return;
+        }
+        // Batching at 80 definitions/sign (20/line by default). Packing everything onto one sign blew past the real
+        // ~384-char protocol cap per line (some real key strings run 40-60 chars) - anything past that point silently
+        // gets truncated by the safe reader and reads back as "detected" for every player, hack or not. 20/line keeps
+        // that from happening in the common case; the safe reader in HackCheckPacketListener still protects against a
+        // crash on the rare line that overflows anyway, it just won't false-positive as often as 56/line did. Both
+        // numbers are hack-checks.batch-size / hack-checks.keys-per-line now; raising either re-arms that failure mode.
+        CheckSession checkSession = new CheckSession(player.getUniqueId(), DetectionScope.PRIMARY);
+        checkSession.batches = this.batch(arrayList);
+        this.beginPass(player, checkSession);
+    }
+
+    private void beginPass(Player player, CheckSession checkSession) {
+        List<Location> list = SignProbe.findSignSpots(player, checkSession.batches.size());
+        if (list.isEmpty()) {
+            // Nothing can be put on a sign, so there is nothing more to probe actively. Widen the
+            // merge to the full catalog instead: the passive picture is still worth completing, and
+            // it is server-side state, so it costs nothing.
+            this.dbg("no sign spot found for " + player.getName() + ", finishing check with 0 hacks");
+            this.activeChecks.remove(checkSession.uuid);
+            checkSession.scope = DetectionScope.FULL;
+            this.finishCheck(player, checkSession);
+            return;
+        }
+        checkSession.signSpots = list;
+        checkSession.batchIndex = 0;
+        this.activeChecks.put(checkSession.uuid, checkSession);
+        this.processBatch(player, checkSession);
+    }
+
+    private ArrayDeque<List<HackDefinition>> batch(List<HackDefinition> list) {
+        ArrayDeque<List<HackDefinition>> arrayDeque = new ArrayDeque<List<HackDefinition>>();
+        for (int i = 0; i < list.size(); i += this.batchSize) {
+            arrayDeque.add(list.subList(i, Math.min(i + this.batchSize, list.size())));
+        }
+        return arrayDeque;
+    }
+
+    private List<HackDefinition> withoutBypassed(Player player, List<HackDefinition> list) {
         ArrayList<HackDefinition> arrayList = new ArrayList<HackDefinition>();
-        for (HackDefinition hackDefinition : this.definitions) {
-            boolean bl;
-            object = BYPASS_NODE + "." + hackDefinition.id();
-            boolean bl2 = bl = player.isPermissionSet((String)object) && player.hasPermission((String)object);
-            if (bl) continue;
+        for (HackDefinition hackDefinition : list) {
+            if (this.isModBypassed(player, hackDefinition.id())) continue;
             arrayList.add(hackDefinition);
         }
-        if (!this.definitions.isEmpty() && arrayList.size() < this.definitions.size()) {
-            int n = this.definitions.size() - arrayList.size();
-            this.plugin.getLogger().warning("[HackCheck] " + n + "/" + this.definitions.size() + " hack definitions are bypassed for " + player.getName() + " via " + BYPASS_NODE + ".<id> permissions" + (arrayList.isEmpty() ? " - ALL of them, so the sign-probe will not run at all for this player." : "."));
+        return arrayList;
+    }
+
+    // Applied to BOTH passes. If it only filtered pass 1, a bypassed ticked mod would simply count
+    // as "uncovered" and come back through escalation, making the permission do nothing at all.
+    private boolean isModBypassed(Player player, String modId) {
+        String string = BYPASS_NODE + "." + modId;
+        return player.isPermissionSet(string) && player.hasPermission(string);
+    }
+
+    private void endPass(Player player, CheckSession checkSession) {
+        if (checkSession.awaitingReply && checkSession.timeoutTask != null) {
+            checkSession.timeoutTask.cancel();
+            checkSession.timeoutTask = null;
         }
+        checkSession.awaitingReply = false;
+        this.restoreBlock(checkSession);
+        List<HackDefinition> arrayList = this.escalationDefinitions(player, checkSession);
         if (arrayList.isEmpty()) {
-            this.finishCheck(player, Set.of());
+            this.finishCheck(player, checkSession);
             return;
         }
-        // Back to batches of 80/sign (20/line). Packing everything onto one sign blew past the real ~384-char
-        // protocol cap per line (some real key strings run 40-60 chars) - anything past that point silently gets
-        // truncated by the safe reader and reads back as "detected" for every player, hack or not. 20/line keeps
-        // that from happening in the common case; the safe reader in HackCheckPacketListener still protects
-        // against a crash on the rare line that overflows anyway, it just won't false-positive as often as 56/line did.
-        ArrayDeque<List<HackDefinition>> arrayDeque = new ArrayDeque<List<HackDefinition>>();
-        for (int i = 0; i < arrayList.size(); i += 80) {
-            arrayDeque.add(arrayList.subList(i, Math.min(i + 80, arrayList.size())));
+        this.dbg("tier 1 hit for " + player.getName() + " - escalating to the full catalog (" + arrayList.size() + " more definitions)");
+        checkSession.scope = DetectionScope.FULL;
+        ++checkSession.passIndex;
+        checkSession.coveredKeys.addAll(HackCheckManager.definitionKeys(arrayList));
+        checkSession.batches = this.batch(arrayList);
+        this.beginPass(player, checkSession);
+    }
+
+    private List<HackDefinition> escalationDefinitions(Player player, CheckSession checkSession) {
+        this.warnIfBypassed(player);
+        if (!this.escalate || checkSession.scope != DetectionScope.PRIMARY || checkSession.reloadBarrier) {
+            return List.of();
         }
-        List<Location> list = SignProbe.findSignSpots(player, arrayDeque.size());
-        if (list.isEmpty()) {
-            this.dbg("no sign spot found for " + player.getName() + ", finishing check with 0 hacks");
-            this.finishCheck(player, Set.of());
+        HashSet<String> hashSet = new HashSet<String>(checkSession.detectedHacks);
+        hashSet.addAll(this.passiveCache.apply(checkSession.uuid, DetectionScope.PRIMARY));
+        if (hashSet.isEmpty()) {
+            return List.of();
+        }
+        // Set difference on the dedupe key, so a definition probed in pass 1 can never be probed
+        // again in pass 2 regardless of what the config did in between.
+        ArrayList<HackDefinition> arrayList = new ArrayList<HackDefinition>();
+        for (HackDefinition hackDefinition : this.definitionsFull) {
+            if (checkSession.coveredKeys.contains(HackCheckManager.definitionKey(hackDefinition))) continue;
+            if (this.isModBypassed(player, hackDefinition.id())) continue;
+            arrayList.add(hackDefinition);
+        }
+        return arrayList;
+    }
+
+    // Counted over the union of both passes, and emitted once, so an admin sees one line per check
+    // rather than one per pass.
+    private void warnIfBypassed(Player player) {
+        if (this.definitionsFull.isEmpty()) {
             return;
         }
-        object = new CheckSession(player.getUniqueId(), arrayDeque);
-        ((CheckSession)object).signSpots = list;
-        this.activeChecks.put(player.getUniqueId(), (CheckSession)object);
-        this.processBatch(player, (CheckSession)object);
+        int bypassed = 0;
+        for (HackDefinition hackDefinition : this.definitionsFull) {
+            if (this.isModBypassed(player, hackDefinition.id())) {
+                ++bypassed;
+            }
+        }
+        if (bypassed == 0) {
+            return;
+        }
+        this.plugin.getLogger().warning("[HackCheck] " + bypassed + "/" + this.definitionsFull.size() + " hack definitions are bypassed for " + player.getName() + " via " + BYPASS_NODE + ".<id> permissions"
+                + (bypassed == this.definitionsFull.size() ? " - ALL of them, so the sign-probe will not run at all for this player." : "."));
+    }
+
+    private static Set<String> definitionKeys(List<HackDefinition> list) {
+        LinkedHashSet<String> linkedHashSet = new LinkedHashSet<String>();
+        for (HackDefinition hackDefinition : list) {
+            linkedHashSet.add(HackCheckManager.definitionKey(hackDefinition));
+        }
+        return linkedHashSet;
+    }
+
+    // The same key dedupeHackDefinitions() uses on the plugin side. Both must stay identical or
+    // pass 1 / pass 2 stop being a true partition and definitions get probed twice.
+    private static String definitionKey(HackDefinition hackDefinition) {
+        return hackDefinition.id() + "\u0000" + String.valueOf((Object)hackDefinition.mode()) + "\u0000" + hackDefinition.key();
     }
 
     public void cancelCheck(UUID uUID) {
@@ -232,9 +376,13 @@ public final class HackCheckManager {
 
     private void processBatch(Player player, CheckSession checkSession) {
         UUID uUID = player.getUniqueId();
-        if (!player.isOnline() || checkSession.batches.isEmpty()) {
+        if (!player.isOnline()) {
             this.activeChecks.remove(uUID);
-            this.finishCheck(player, checkSession.detectedHacks);
+            return;
+        }
+        if (checkSession.batches.isEmpty()) {
+            this.activeChecks.remove(uUID);
+            this.endPass(player, checkSession);
             return;
         }
         List<HackDefinition> list = checkSession.batches.poll();
@@ -247,7 +395,7 @@ public final class HackCheckManager {
             int idx;
             ArrayList<Assignment> assignments = new ArrayList<Assignment>();
             ArrayList<SignProbe.ProbeLine> probes = new ArrayList<SignProbe.ProbeLine>();
-            for (int k = 0; k < 20 && (idx = line * 20 + k) < list.size(); ++k) {
+            for (int k = 0; k < this.keysPerLine && (idx = line * this.keysPerLine + k) < list.size(); ++k) {
                 HackDefinition hackDefinition = list.get(idx);
                 String indicator = hackDefinition.mode() == HackDefinition.Mode.KEYBIND ? hackDefinition.key() : this.randomFallback();
                 assignments.add(new Assignment(hackDefinition, indicator));
@@ -258,7 +406,7 @@ public final class HackCheckManager {
         }
         checkSession.lineAssignments = lineAssignments;
         if (this.debug) {
-            StringBuilder stringBuilder = new StringBuilder("batch ").append(checkSession.batchIndex).append(" -> ").append(player.getName()).append(" @ ").append(checkSession.signLoc.getBlockX()).append(',').append(checkSession.signLoc.getBlockY()).append(',').append(checkSession.signLoc.getBlockZ()).append(" probing ");
+            StringBuilder stringBuilder = new StringBuilder("pass ").append(checkSession.passIndex).append(" batch ").append(checkSession.batchIndex).append(" -> ").append(player.getName()).append(" @ ").append(checkSession.signLoc.getBlockX()).append(',').append(checkSession.signLoc.getBlockY()).append(',').append(checkSession.signLoc.getBlockZ()).append(" probing ");
             for (int i = 0; i < list.size(); ++i) {
                 HackDefinition object = list.get(i);
                 stringBuilder.append(i == 0 ? "[" : ", ").append(object.id()).append('(').append(object.mode().name().toLowerCase()).append(':').append(object.key()).append(object.required() ? ",trap" : "").append(')');
@@ -375,33 +523,41 @@ public final class HackCheckManager {
         return string.regionMatches(true, 0, string2, 0, string2.length());
     }
 
-    private void finishCheck(Player player, Set<String> set) {
+    private void finishCheck(Player player, CheckSession checkSession) {
         UUID uUID = player.getUniqueId();
-        HashSet<String> hashSet = new HashSet<String>(set);
-        hashSet.addAll((Collection<String>)this.channelMods.apply(uUID));
+        // Probe rather than read the cache for the escalated scopes: the scheduled passive task may
+        // never have run (delay 0, queue ordering, a reload, a manual check on a long-online player),
+        // and a partial report is exactly what this feature exists to avoid.
+        HashSet<String> hashSet = new HashSet<String>(checkSession.detectedHacks);
+        hashSet.addAll(this.passiveProbe.apply(player, DetectionScope.PRIMARY));
+        if (checkSession.scope == DetectionScope.FULL) {
+            hashSet.addAll(this.passiveProbe.apply(player, DetectionScope.FULL));
+        }
         this.onResult.accept(player, hashSet);
         this.pendingKick.remove(uUID);
-        String string = this.join(set);
         HashSet<String> hashSet2 = new HashSet<String>(hashSet);
-        hashSet2.removeAll(set);
-        String string2 = this.join(hashSet2);
-        this.executePunishment(player, hashSet, string, string2);
+        hashSet2.removeAll(checkSession.detectedHacks);
+        this.executePunishment(player, hashSet, this.join(checkSession.detectedHacks), this.join(hashSet2));
     }
 
     private static final class CheckSession {
         final UUID uuid;
-        final Deque<List<HackDefinition>> batches;
         final Set<String> detectedHacks = new HashSet<String>();
+        final Set<String> coveredKeys = new LinkedHashSet<String>();
+        DetectionScope scope = DetectionScope.PRIMARY;
+        Deque<List<HackDefinition>> batches = new ArrayDeque<List<HackDefinition>>();
+        boolean reloadBarrier = false;
         int batchIndex = 0;
+        int passIndex = 1;
         List<List<Assignment>> lineAssignments = List.of();
         boolean awaitingReply = false;
         List<Location> signSpots = List.of();
         Location signLoc;
         BukkitTask timeoutTask;
 
-        CheckSession(UUID uUID, Deque<List<HackDefinition>> deque) {
+        CheckSession(UUID uUID, DetectionScope detectionScope) {
             this.uuid = uUID;
-            this.batches = deque;
+            this.scope = detectionScope;
         }
     }
 

@@ -4,9 +4,11 @@ import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.logging.Logger;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 import org.bukkit.configuration.ConfigurationSection;
@@ -14,17 +16,46 @@ import org.bukkit.entity.Player;
 import xyz.nim.modDetectorPlugin.hackcheck.HackDefinition;
 
 public final class ModCatalog {
+    // Every id in here is probed in tier 1. The old whitelistMode flag is gone on purpose: the
+    // detect: list is the only thing that decides whether a mod is looked for, so there is no
+    // second mode whose semantics could be misread.
     private Map<String, ModDef> known = new HashMap<String, ModDef>();
-    private Set<String> blockedMods = new HashSet<String>();
-    private boolean whitelistMode = false;
+    private Set<String> ticked = new HashSet<String>();
 
-    public void load(ConfigurationSection configurationSection, ConfigurationSection configurationSection2, List<String> list, boolean bl) {
+    public void load(ConfigurationSection configurationSection, ConfigurationSection configurationSection2, List<String> list, Logger warn) {
         HashMap<String, ModDef> hashMap = new HashMap<String, ModDef>();
         this.loadSection(configurationSection, hashMap);
         this.loadSection(configurationSection2, hashMap);
         this.known = hashMap;
-        this.blockedMods = new HashSet<String>(list == null ? List.of() : list);
-        this.whitelistMode = bl;
+        this.ticked = this.parseTicked(list, warn);
+    }
+
+    private Set<String> parseTicked(List<String> list, Logger warn) {
+        LinkedHashSet<String> linkedHashSet = new LinkedHashSet<String>();
+        for (String string : list == null ? List.<String>of() : list) {
+            if (string == null) {
+                continue;
+            }
+            String string2 = string.trim().toLowerCase();
+            if (string2.isEmpty()) {
+                continue;
+            }
+            if (!this.known.containsKey(string2)) {
+                // Not fatal: a custom-mods: entry or a hacks: id may legitimately be ticked, and
+                // the full catalog is still covered by tier 2. Say so once per bad id, then move on.
+                if (warn != null) {
+                    warn.warning("detect: '" + string2 + "' is not in the mods: or custom-mods: catalog - ignoring it.");
+                }
+                continue;
+            }
+            if (!linkedHashSet.add(string2) && warn != null) {
+                warn.warning("detect: '" + string2 + "' is listed more than once - counting it once.");
+            }
+        }
+        if (linkedHashSet.isEmpty() && warn != null) {
+            warn.warning("detect: is empty - no mod will be detected at tier 1, and escalation can never fire. Use /moddetector detect <mod> to tick mods on.");
+        }
+        return linkedHashSet;
     }
 
     private void loadSection(ConfigurationSection configurationSection, Map<String, ModDef> map) {
@@ -170,12 +201,12 @@ public final class ModCatalog {
         return arrayList;
     }
 
-    public Set<String> detect(Player player) {
+    public Set<String> detect(Player player, DetectionScope scope) {
         HashSet<String> hashSet = new HashSet<String>();
         ArrayList<String> arrayList = new ArrayList<String>(player.getListeningPluginChannels());
         String string = player.getClientBrandName();
         for (ModDef modDef : this.known.values()) {
-            if (!this.isTracked(modDef.id()) || !this.matchesPassiveSignal(modDef, arrayList, string)) continue;
+            if (scope != DetectionScope.FULL && !this.isTicked(modDef.id()) || !this.matchesPassiveSignal(modDef, arrayList, string)) continue;
             hashSet.add(modDef.id());
         }
         return hashSet;
@@ -199,10 +230,10 @@ public final class ModCatalog {
         return false;
     }
 
-    public List<HackDefinition> activeDefinitions() {
+    public List<HackDefinition> activeDefinitions(DetectionScope scope) {
         ArrayList<HackDefinition> arrayList = new ArrayList<HackDefinition>();
         for (ModDef modDef : this.known.values()) {
-            if (!this.isTracked(modDef.id())) continue;
+            if (scope != DetectionScope.FULL && !this.isTicked(modDef.id())) continue;
             for (Signal signal : modDef.signals()) {
                 if (!signal.isActive()) continue;
                 HackDefinition.Mode mode = switch (signal.source().ordinal()) {
@@ -248,8 +279,8 @@ public final class ModCatalog {
         return string2.equalsIgnoreCase(string3);
     }
 
-    private boolean isTracked(String string) {
-        return this.whitelistMode ? this.blockedMods.contains(string) : !this.blockedMods.contains(string);
+    public boolean isTicked(String string) {
+        return this.ticked.contains(string);
     }
 
     public String displayName(String string) {
@@ -277,21 +308,23 @@ public final class ModCatalog {
         return modDef == null ? List.of() : modDef.punishments();
     }
 
-    public List<ModDef> listMods(String string) {
+    public List<ModDef> listMods(String string, TickFilter tickFilter) {
         Category category = string == null || string.isBlank() ? null : ModCatalog.parseCategory(string);
+        TickFilter tickFilter2 = tickFilter == null ? TickFilter.ALL : tickFilter;
         ArrayList<ModDef> arrayList = new ArrayList<ModDef>();
         for (ModDef modDef3 : this.known.values()) {
-            if (!this.isTracked(modDef3.id()) || category != null && modDef3.category() != category) continue;
+            if (category != null && modDef3.category() != category || !tickFilter2.matches(this.isTicked(modDef3.id()))) continue;
             arrayList.add(modDef3);
         }
         arrayList.sort((modDef, modDef2) -> modDef.display().compareToIgnoreCase(modDef2.display()));
         return arrayList;
     }
 
-    public Map<Category, Integer> countsByCategory() {
+    public Map<Category, Integer> countsByCategory(TickFilter tickFilter) {
+        TickFilter tickFilter2 = tickFilter == null ? TickFilter.ALL : tickFilter;
         EnumMap<Category, Integer> enumMap = new EnumMap<Category, Integer>(Category.class);
         for (ModDef modDef : this.known.values()) {
-            if (!this.isTracked(modDef.id())) continue;
+            if (!tickFilter2.matches(this.isTicked(modDef.id()))) continue;
             enumMap.merge(modDef.category(), 1, Integer::sum);
         }
         return enumMap;
@@ -306,13 +339,17 @@ public final class ModCatalog {
         return this.known.size();
     }
 
-    public int trackedCount() {
+    public int tickedCount() {
         int n = 0;
         for (String string : this.known.keySet()) {
-            if (!this.isTracked(string)) continue;
+            if (!this.isTicked(string)) continue;
             ++n;
         }
         return n;
+    }
+
+    public int untickedCount() {
+        return this.known.size() - this.tickedCount();
     }
 
     public record ModDef(String id, String display, Category category, List<Signal> signals, boolean punish, List<String> punishments) {
@@ -325,6 +362,20 @@ public final class ModCatalog {
         UTILITY,
         UNKNOWN;
 
+    }
+
+    public static enum TickFilter {
+        ALL,
+        TICKED,
+        UNTICKED;
+
+        boolean matches(boolean ticked) {
+            return switch (this) {
+                case ALL -> true;
+                case TICKED -> ticked;
+                case UNTICKED -> !ticked;
+            };
+        }
     }
 
     public record Signal(SignalSource source, List<String> matches, List<String> keys, boolean required) {

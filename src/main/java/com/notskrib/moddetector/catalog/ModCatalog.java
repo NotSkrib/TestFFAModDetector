@@ -1,4 +1,4 @@
-package xyz.nim.modDetectorPlugin.catalog;
+package com.notskrib.moddetector.catalog;
 
 import java.util.ArrayList;
 import java.util.EnumMap;
@@ -13,7 +13,7 @@ import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.Player;
-import xyz.nim.modDetectorPlugin.hackcheck.HackDefinition;
+import com.notskrib.moddetector.hackcheck.HackDefinition;
 
 public final class ModCatalog {
     // Every id in here is probed in tier 1. The old whitelistMode flag is gone on purpose: the

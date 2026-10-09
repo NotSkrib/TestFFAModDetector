@@ -1,4 +1,4 @@
-package xyz.nim.modDetectorPlugin.hackcheck;
+package com.notskrib.moddetector.hackcheck;
 
 import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 import java.util.ArrayDeque;
@@ -24,13 +24,13 @@ import org.bukkit.Location;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
-import xyz.nim.modDetectorPlugin.ModDetectorPlugin;
-import xyz.nim.modDetectorPlugin.Sched;
-import xyz.nim.modDetectorPlugin.catalog.DetectionScope;
-import xyz.nim.modDetectorPlugin.hackcheck.BedrockDetector;
-import xyz.nim.modDetectorPlugin.hackcheck.HackDefinition;
-import xyz.nim.modDetectorPlugin.hackcheck.HackCheckSettings;
-import xyz.nim.modDetectorPlugin.hackcheck.SignProbe;
+import com.notskrib.moddetector.ModDetectorPlugin;
+import com.notskrib.moddetector.Sched;
+import com.notskrib.moddetector.catalog.DetectionScope;
+import com.notskrib.moddetector.hackcheck.BedrockDetector;
+import com.notskrib.moddetector.hackcheck.HackDefinition;
+import com.notskrib.moddetector.hackcheck.HackCheckSettings;
+import com.notskrib.moddetector.hackcheck.SignProbe;
 
 public final class HackCheckManager {
     // The global bypass node ("<node>" exempts a player entirely, "<node>.<id>" exempts one definition).

@@ -1,4 +1,4 @@
-package xyz.nim.modDetectorPlugin.hackcheck;
+package com.notskrib.moddetector.hackcheck;
 
 // Replaces HackCheckManager's seven positional configure(...) arguments. Every knob the manager
 // needs comes from hack-checks: in config.yml, so adding one no longer means growing an

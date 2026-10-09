@@ -1,4 +1,4 @@
-package xyz.nim.modDetectorPlugin.hackcheck;
+package com.notskrib.moddetector.hackcheck;
 
 import com.github.retrooper.packetevents.PacketEvents;
 import com.github.retrooper.packetevents.event.PacketListenerAbstract;
@@ -12,7 +12,7 @@ import com.github.retrooper.packetevents.wrapper.PacketWrapper;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
-import xyz.nim.modDetectorPlugin.Sched;
+import com.notskrib.moddetector.Sched;
 
 import java.nio.charset.StandardCharsets;
 

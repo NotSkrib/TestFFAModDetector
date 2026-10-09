@@ -1,4 +1,4 @@
-package xyz.nim.modDetectorPlugin.command;
+package com.notskrib.moddetector.command;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -21,9 +21,9 @@ import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
-import xyz.nim.modDetectorPlugin.ModDetectorPlugin;
-import xyz.nim.modDetectorPlugin.Msg;
-import xyz.nim.modDetectorPlugin.catalog.ModCatalog;
+import com.notskrib.moddetector.ModDetectorPlugin;
+import com.notskrib.moddetector.Msg;
+import com.notskrib.moddetector.catalog.ModCatalog;
 
 public final class ModDetectorCommand
 implements CommandExecutor,

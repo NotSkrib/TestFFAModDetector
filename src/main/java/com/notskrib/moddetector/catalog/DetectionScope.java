@@ -1,4 +1,4 @@
-package xyz.nim.modDetectorPlugin.catalog;
+package com.notskrib.moddetector.catalog;
 
 public enum DetectionScope {
     PRIMARY,

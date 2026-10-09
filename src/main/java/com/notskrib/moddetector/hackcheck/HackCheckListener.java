@@ -1,4 +1,4 @@
-package xyz.nim.modDetectorPlugin.hackcheck;
+package com.notskrib.moddetector.hackcheck;
 
 import java.util.Set;
 import java.util.UUID;
@@ -13,10 +13,10 @@ import org.bukkit.event.block.SignChangeEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.plugin.Plugin;
-import xyz.nim.modDetectorPlugin.ModDetectorPlugin;
-import xyz.nim.modDetectorPlugin.Sched;
-import xyz.nim.modDetectorPlugin.catalog.DetectionScope;
-import xyz.nim.modDetectorPlugin.hackcheck.HackCheckManager;
+import com.notskrib.moddetector.ModDetectorPlugin;
+import com.notskrib.moddetector.Sched;
+import com.notskrib.moddetector.catalog.DetectionScope;
+import com.notskrib.moddetector.hackcheck.HackCheckManager;
 
 public final class HackCheckListener
 implements Listener {

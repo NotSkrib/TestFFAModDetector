@@ -1,4 +1,4 @@
-package xyz.nim.modDetectorPlugin;
+package com.notskrib.moddetector;
 
 import java.io.File;
 import java.io.IOException;
@@ -36,15 +36,15 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.Listener;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.java.JavaPlugin;
-import xyz.nim.modDetectorPlugin.Msg;
-import xyz.nim.modDetectorPlugin.catalog.DetectionScope;
-import xyz.nim.modDetectorPlugin.catalog.ModCatalog;
-import xyz.nim.modDetectorPlugin.command.ModDetectorCommand;
-import xyz.nim.modDetectorPlugin.hackcheck.HackCheckListener;
-import xyz.nim.modDetectorPlugin.hackcheck.HackCheckManager;
-import xyz.nim.modDetectorPlugin.hackcheck.HackCheckPacketListener;
-import xyz.nim.modDetectorPlugin.hackcheck.HackCheckSettings;
-import xyz.nim.modDetectorPlugin.hackcheck.HackDefinition;
+import com.notskrib.moddetector.Msg;
+import com.notskrib.moddetector.catalog.DetectionScope;
+import com.notskrib.moddetector.catalog.ModCatalog;
+import com.notskrib.moddetector.command.ModDetectorCommand;
+import com.notskrib.moddetector.hackcheck.HackCheckListener;
+import com.notskrib.moddetector.hackcheck.HackCheckManager;
+import com.notskrib.moddetector.hackcheck.HackCheckPacketListener;
+import com.notskrib.moddetector.hackcheck.HackCheckSettings;
+import com.notskrib.moddetector.hackcheck.HackDefinition;
 
 public final class ModDetectorPlugin
 extends JavaPlugin {

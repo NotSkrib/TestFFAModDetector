@@ -6,7 +6,8 @@ under the GNU General Public License v3.0. As required by the GPLv3, this fork r
 licensed under GPLv3 and this notice documents the substantive changes made:
 
 - Rebranded as ErrorSMPModDetector for the ErrorSMP server.
-- Package/class layout reorganized under `xyz.nim.modDetectorPlugin`.
+- Package/class layout reorganized under `com.notskrib.moddetector` (was
+  `xyz.nim.modDetectorPlugin` upstream).
 - Added the `hackcheck` subsystem: sign-probe translation/keybind fingerprinting
   (ported from the technique used by [CheckHacks](https://github.com/branduzzo/CheckHacks)),
   including same-tick open/revert, pure translation-probe lines (no marker/canary),

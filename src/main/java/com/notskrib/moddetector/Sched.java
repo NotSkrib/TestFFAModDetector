@@ -1,4 +1,4 @@
-package xyz.nim.modDetectorPlugin;
+package com.notskrib.moddetector;
 
 import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 import org.bukkit.Bukkit;

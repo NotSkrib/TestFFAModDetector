@@ -1,6 +1,6 @@
 name: TestFFAModDetector
 version: '${project.version}'
-main: xyz.nim.modDetectorPlugin.ModDetectorPlugin
+main: com.notskrib.moddetector.ModDetectorPlugin
 api-version: '1.21.11'
 # Folia refuses to load a plugin without this flag. Every scheduled task goes through Sched, which uses
 # the entity/global schedulers (Paper API), so the same jar still runs on Paper, Purpur and Leaf.

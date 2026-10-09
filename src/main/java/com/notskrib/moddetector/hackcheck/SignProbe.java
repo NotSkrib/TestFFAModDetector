@@ -1,5 +1,5 @@
 
-package xyz.nim.modDetectorPlugin.hackcheck;
+package com.notskrib.moddetector.hackcheck;
 
 import com.github.retrooper.packetevents.PacketEvents;
 import com.github.retrooper.packetevents.manager.player.PlayerManager;
@@ -25,7 +25,7 @@ import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
-import xyz.nim.modDetectorPlugin.hackcheck.HackDefinition;
+import com.notskrib.moddetector.hackcheck.HackDefinition;
 
 public final class SignProbe {
     private static final int[][] HORIZONTAL_OFFSETS = new int[][]{{2, 0}, {0, 2}, {-2, 0}, {0, -2}, {2, 2}, {2, -2}, {-2, 2}, {-2, -2}, {3, 0}, {0, 3}, {-3, 0}, {0, -3}, {3, 2}, {3, -2}, {-3, 2}, {-3, -2}, {2, 3}, {-2, 3}, {2, -3}, {-2, -3}, {4, 0}, {0, 4}, {-4, 0}, {0, -4}};

@@ -12,6 +12,46 @@ Detection scope is a tick-off `detect:` list in `config.yml` (tier 1) plus autom
 escalation over the unticked remainder whenever tier 1 hits anything (tier 2). Untick by
 deleting a line, tick by adding one — no rebuild needed.
 
+## Adding your own mods
+
+Everything lives in `config.yml`, so you need no rebuild — just `/md reload`.
+
+Each mod is one entry under `mods:` (or `custom-mods:`), declaring signals:
+
+```yaml
+mods:
+  my-hack-client:
+    display-name: "My Hack Client"
+    category: CHEAT   # CHEAT | SUSPICIOUS | LAUNCHER | UTILITY
+    signals:
+      - source: TRANSLATE      # probe a translation key the client may resolve
+        keys: ["key.myhackclient.title"]
+      - source: KEYBIND        # probe a keybind id the client may have bound
+        keys: ["key.myhackclient.toggle"]
+      - source: CHANNEL        # match a plugin-messaging channel
+        matches: ["myhackclient:*"]
+      - source: BRAND          # match the self-reported client brand (regex)
+        matches: ["(?i)^myhackclient"]
+    punish: true
+    punishments:
+      - "kick %player% &cUse of a disallowed client is forbidden. Detected: %punishable%"
+```
+
+- `TRANSLATE`, `KEYBIND` and `METEOR_VARIANT` are **active** — the sign-probe. This is
+  the only method that catches a mod which deliberately hides itself.
+- `CHANNEL` and `BRAND` are **passive** — they only catch a mod that doesn't hide.
+- `punish:` decides whether a detection on this mod can kick.
+
+Declaring an entry does not probe it. Add its id to the top-level `detect:` list to have
+it probed on every join; leave it out and only tier-2 escalation covers it.
+`/md detect <mod>` and `/md ignore <mod>` edit that list for you.
+
+To find the values, most mods worth tracking are open source: translation keys are in
+`assets/<modid>/lang/en_us.json`, keybind ids come from `KeyMapping` construction in
+the mod's main class, and channel namespaces come from `ClientPlayNetworking`
+registrations. Write your own entries from those — don't bulk-import another
+detector's compiled catalog.
+
 ## Requirements
 
 - **Minecraft 1.21.11** on Paper, Purpur, Leaf or Folia
@@ -62,10 +102,7 @@ deleting a line, tick by adding one — no rebuild needed.
 
 ## Documentation
 
-- [`ADDING-MODS.md`](ADDING-MODS.md) — how detection works, and how to add mods
-- [`UPGRADING.md`](UPGRADING.md) — migrating from 4.2.0
-- [`PLANS.md`](PLANS.md) — design and implementation plan
-- [`NOTICE.md`](NOTICE.md) — licence and change history
+- [`NOTICE.md`](NOTICE.md) — licence, attribution, and change history
 
 ## Building
 

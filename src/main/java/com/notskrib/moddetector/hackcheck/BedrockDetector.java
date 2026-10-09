@@ -1,4 +1,4 @@
-package xyz.nim.modDetectorPlugin.hackcheck;
+package com.notskrib.moddetector.hackcheck;
 
 import java.lang.reflect.Method;
 import java.util.UUID;
@@ -31,7 +31,7 @@ final class BedrockDetector {
     private static Boolean checkFloodgate(Player player) {
         if (!floodgateChecked) {
             Class<BedrockDetector> clazz = BedrockDetector.class;
-            // MONITORENTER : xyz.nim.modDetectorPlugin.hackcheck.BedrockDetector.class
+            // MONITORENTER : com.notskrib.moddetector.hackcheck.BedrockDetector.class
             if (!floodgateChecked) {
                 try {
                     Class<?> apiClass = Class.forName("org.geysermc.floodgate.api.FloodgateApi");

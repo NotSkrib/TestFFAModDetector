@@ -1,4 +1,4 @@
-package xyz.nim.modDetectorPlugin;
+package com.notskrib.moddetector;
 
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.TextComponent;

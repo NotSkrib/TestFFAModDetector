@@ -8,6 +8,25 @@ detection-log:
   enabled: false
   file: "detections.jsonl"
 
+# ------------------------------------------------------------
+#  Chat signing
+# ------------------------------------------------------------
+#  Catches clients that strip chat signatures. This is the one signal that
+#  survives a client which otherwise looks exactly like vanilla: a signed
+#  message is not a channel, a brand or a translation key, so hiding it means
+#  deliberately suppressing the chat protocol. OpSec (Signing Mode: OFF) and
+#  No Chat Reports both do this.
+#
+#  Fires once a player has sent 5 consecutive UNSIGNED messages.
+#
+#  OFF by default, and ships alert-only even when on, because unsigned chat has
+#  innocent causes: a server without enforce-secure-profile, a player who turned
+#  chat signing off in their own account settings, or a client too old to sign.
+#  Turn on `punish` only after watching the alerts on your own player base.
+chat-signing:
+  enabled: false
+  punish: false
+
 # ============================================================
 #  What gets detected - the tick-off list
 # ============================================================

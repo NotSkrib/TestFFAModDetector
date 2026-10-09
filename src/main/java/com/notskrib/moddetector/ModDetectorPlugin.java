@@ -39,6 +39,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 import com.notskrib.moddetector.Msg;
 import com.notskrib.moddetector.catalog.DetectionScope;
 import com.notskrib.moddetector.catalog.ModCatalog;
+import com.notskrib.moddetector.chat.ChatSigningListener;
 import com.notskrib.moddetector.command.ModDetectorCommand;
 import com.notskrib.moddetector.hackcheck.HackCheckListener;
 import com.notskrib.moddetector.hackcheck.HackCheckManager;
@@ -64,6 +65,7 @@ extends JavaPlugin {
     private final ModCatalog catalog = new ModCatalog();
     private HackCheckManager hackCheckManager;
     private HackCheckListener hackCheckListener;
+    private ChatSigningListener chatSigningListener;
     // Reassigned by /md reload on the command's thread, read from every player's thread on Folia.
     private volatile List<HackDefinition> hackDefinitionsPrimary = List.of();
     private volatile List<HackDefinition> hackDefinitionsFull = List.of();
@@ -108,6 +110,9 @@ extends JavaPlugin {
         this.hackCheckManager.setOnResult(this::handleResult);
         this.hackCheckListener = new HackCheckListener((Plugin)this, this.hackCheckManager);
         this.getServer().getPluginManager().registerEvents((Listener)this.hackCheckListener, (Plugin)this);
+        this.chatSigningListener = new ChatSigningListener((Plugin)this);
+        this.getServer().getPluginManager().registerEvents((Listener)this.chatSigningListener, (Plugin)this);
+        this.hackCheckListener.setChatSigningListener(this.chatSigningListener);
         try {
             HackCheckPacketListener.registerIfAvailable((Plugin)this, this.hackCheckManager);
             this.signProbeActive = true;
@@ -174,6 +179,28 @@ extends JavaPlugin {
         int n5 = this.getConfig().getInt("hack-checks.on-join.delay-ticks", 40);
         boolean bl4 = this.getConfig().getBoolean("hack-checks.on-join.only-first-join", false);
         this.hackCheckListener.configureOnJoin(bl3, n5, bl4, this.passiveDelayTicks);
+        this.chatSigningListener.configure(
+                this.getConfig().getBoolean("chat-signing.enabled", false),
+                this.getConfig().getBoolean("chat-signing.punish", false),
+                player -> this.reportUnsignedChat(player));
+    }
+
+    private void reportUnsignedChat(Player player) {
+        Set<String> set = new LinkedHashSet<String>();
+        set.add("unsigned-chat");
+        if (this.alertStaff) {
+            Component component = Msg.prefixed(((TextComponent)Component.text((String)player.getName(), (TextColor)NamedTextColor.WHITE)
+                    .append((Component)Component.text((String)" is sending unsigned chat", (TextColor)NamedTextColor.YELLOW)))
+                    .append((Component)Component.text((String)" - a client with chat signing off (OpSec, No Chat Reports) is installed.", (TextColor)NamedTextColor.DARK_GRAY)));
+            for (Player staff : Bukkit.getOnlinePlayers()) {
+                Sched.onPlayer((Plugin)this, staff, 0, () -> {
+                    if (staff.hasPermission("testffa.alerts")) {
+                        staff.sendMessage((Component)component);
+                    }
+                }, null);
+            }
+            this.getLogger().info(player.getName() + " is sending unsigned chat");
+        }
     }
 
     private static int clamp(int n, int n2, int n3) {
@@ -494,6 +521,14 @@ extends JavaPlugin {
 
     public boolean escalateOnDetection() {
         return this.escalateOnDetection;
+    }
+
+    public boolean chatSigningActive() {
+        return this.chatSigningListener != null && this.chatSigningListener.enabled();
+    }
+
+    public boolean chatSigningPunish() {
+        return this.chatSigningListener != null && this.chatSigningListener.punish();
     }
 
     public Set<String> knownSignalIds() {

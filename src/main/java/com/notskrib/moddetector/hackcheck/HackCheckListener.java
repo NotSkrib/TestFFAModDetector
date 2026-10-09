@@ -16,6 +16,7 @@ import org.bukkit.plugin.Plugin;
 import com.notskrib.moddetector.ModDetectorPlugin;
 import com.notskrib.moddetector.Sched;
 import com.notskrib.moddetector.catalog.DetectionScope;
+import com.notskrib.moddetector.chat.ChatSigningListener;
 import com.notskrib.moddetector.hackcheck.HackCheckManager;
 
 public final class HackCheckListener
@@ -23,6 +24,7 @@ implements Listener {
     private final Plugin plugin;
     private final HackCheckManager manager;
     private final Set<UUID> firstJoinSeen = ConcurrentHashMap.newKeySet();
+    private volatile ChatSigningListener chatSigningListener;
     // configureOnJoin runs on the reload thread; the join handler reads these on a player's region thread.
     private volatile boolean onJoinEnabled;
     private volatile int onJoinDelayTicks;
@@ -32,6 +34,10 @@ implements Listener {
     public HackCheckListener(Plugin plugin, HackCheckManager hackCheckManager) {
         this.plugin = plugin;
         this.manager = hackCheckManager;
+    }
+
+    public void setChatSigningListener(ChatSigningListener chatSigningListener) {
+        this.chatSigningListener = chatSigningListener;
     }
 
     public void configureOnJoin(boolean bl, int n, boolean bl2, int n2) {
@@ -97,6 +103,9 @@ implements Listener {
     public void onQuit(PlayerQuitEvent playerQuitEvent) {
         try {
             this.firstJoinSeen.remove(playerQuitEvent.getPlayer().getUniqueId());
+            if (this.chatSigningListener != null) {
+                this.chatSigningListener.forget(playerQuitEvent.getPlayer().getUniqueId());
+            }
             this.manager.cancelCheck(playerQuitEvent.getPlayer().getUniqueId());
             ((ModDetectorPlugin)this.plugin).clearCachedResults(playerQuitEvent.getPlayer().getUniqueId());
         }

@@ -154,6 +154,7 @@ TabCompleter {
         commandSender.sendMessage(ModDetectorCommand.statRow("Sign-probe definitions", (Component)Component.text((String)(this.plugin.enabledHackCount() + "/" + this.plugin.totalHackCount()), (TextColor)NamedTextColor.WHITE)));
         commandSender.sendMessage(ModDetectorCommand.statRow("Sign-probe", ModDetectorCommand.bool(this.plugin.signProbeActive(), "active", "disabled")));
         commandSender.sendMessage(ModDetectorCommand.statRow("Kick enforcement", ModDetectorCommand.bool(this.plugin.kickEnabled(), "enabled", "alert-only")));
+        commandSender.sendMessage(ModDetectorCommand.statRow("Chat signing", ModDetectorCommand.bool(this.plugin.chatSigningActive(), "watching for unsigned chat" + (this.plugin.chatSigningPunish() ? " (kicks)" : " (alert-only)"), "off")));
         commandSender.sendMessage(Msg.divider());
         commandSender.sendMessage(((TextComponent)Component.text((String)" /moddetector help", (TextColor)NamedTextColor.DARK_GRAY, (TextDecoration[])new TextDecoration[]{TextDecoration.ITALIC}).clickEvent(ClickEvent.suggestCommand((String)"/moddetector help"))).hoverEvent((HoverEventSource)HoverEvent.showText((Component)Component.text((String)"See all commands", (TextColor)NamedTextColor.GRAY))));
     }

@@ -94,6 +94,25 @@ detector's compiled catalog.
 | `testffa.bypass` | false | Exempts a player from all detection. |
 | `testffa.bypass.<mod-id>` | — | Exempts one mod. Built at runtime, so it will not autocomplete until granted. |
 
+## Chat signing (catching anti-detection mods)
+
+A signed chat message is the one signal that survives a client which otherwise looks
+exactly like vanilla. It isn't a channel, a brand, or a translation key — hiding it
+means deliberately suppressing the chat protocol. OpSec (Signing Mode: OFF) and No Chat
+Reports both do this.
+
+```yaml
+chat-signing:
+  enabled: false   # off by default
+  punish: false    # alert-only even when on
+```
+
+Fires once a player sends **5 consecutive unsigned messages**, once per player, and
+reports to `testffa.alerts` holders. Both switches ship off because unsigned chat has
+innocent causes: a server without `enforce-secure-profile`, a player who disabled chat
+signing in their own account settings, or a client too old to sign. Watch the alerts
+before you enable `punish`.
+
 ## Detection and punish are separate axes
 
 `detect:` answers *is this mod looked for at all?* `punish:` (or `/md allow` /

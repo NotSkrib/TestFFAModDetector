@@ -10,7 +10,6 @@ import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -18,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import net.kyori.adventure.text.Component;
@@ -64,17 +64,26 @@ extends JavaPlugin {
     private final ModCatalog catalog = new ModCatalog();
     private HackCheckManager hackCheckManager;
     private HackCheckListener hackCheckListener;
-    private List<HackDefinition> hackDefinitionsPrimary = List.of();
-    private List<HackDefinition> hackDefinitionsFull = List.of();
+    // Reassigned by /md reload on the command's thread, read from every player's thread on Folia.
+    private volatile List<HackDefinition> hackDefinitionsPrimary = List.of();
+    private volatile List<HackDefinition> hackDefinitionsFull = List.of();
     private boolean signProbeActive = false;
-    private boolean kickEnabled = false;
-    private boolean escalateOnDetection = true;
-    private int passiveDelayTicks = 5;
+    private volatile boolean kickEnabled = false;
+    private volatile boolean escalateOnDetection = true;
+    private volatile int passiveDelayTicks = 5;
+    // Read from a player's region thread in handleResult, so these are cached at reload rather than
+    // pulled from getConfig() there: Bukkit's config map is not safe to read while a reload swaps it.
+    private volatile boolean alertStaff = true;
+    private volatile boolean detectionLogEnabled = false;
+    private volatile String detectionLogFile = "detections.jsonl";
     // One entry per player per scope, so a tier-1 and a tier-2 passive scan of the same player do
-    // not overwrite each other. EnumMap keeps the scope iteration order stable.
-    private final Map<UUID, Map<DetectionScope, Set<String>>> passiveResults = new HashMap<UUID, Map<DetectionScope, Set<String>>>();
-    private final Map<UUID, Set<String>> lastResult = new HashMap<UUID, Set<String>>();
-    private final Map<UUID, CommandSender> manualCheckSenders = new HashMap<UUID, CommandSender>();
+    // not overwrite each other. Nothing iterates the inner map, only get/put, so a hash map is enough.
+    //
+    // All three maps are concurrent: joins, results and /md check for different players land on
+    // different region threads at once on Folia, and a plain HashMap corrupts under that.
+    private final Map<UUID, Map<DetectionScope, Set<String>>> passiveResults = new ConcurrentHashMap<UUID, Map<DetectionScope, Set<String>>>();
+    private final Map<UUID, Set<String>> lastResult = new ConcurrentHashMap<UUID, Set<String>>();
+    private final Map<UUID, CommandSender> manualCheckSenders = new ConcurrentHashMap<UUID, CommandSender>();
 
     public void onEnable() {
         try {
@@ -149,6 +158,9 @@ extends JavaPlugin {
         boolean bl2 = this.getConfig().getBoolean("hack-checks.sign-probe-debug", false);
         this.kickEnabled = bl;
         this.escalateOnDetection = this.getConfig().getBoolean("hack-checks.escalate", true);
+        this.alertStaff = this.getConfig().getBoolean("alert-staff", true);
+        this.detectionLogEnabled = this.getConfig().getBoolean("detection-log.enabled", false);
+        this.detectionLogFile = this.getConfig().getString("detection-log.file", "detections.jsonl");
         this.passiveDelayTicks = this.clamp(this.getConfig().getInt("hack-checks.passive-delay-ticks", ModDetectorPlugin.DEFAULT_PASSIVE_DELAY_TICKS), 0, Integer.MAX_VALUE);
         boolean bl5 = this.getConfig().getBoolean("hack-checks.skip-bedrock", true);
         String string3 = this.getConfig().getString("hack-checks.bedrock-name-prefix", ".");
@@ -284,24 +296,30 @@ extends JavaPlugin {
             linkedHashSet.add(this.displayFor(string2));
         }
         String string = String.join((CharSequence)", ", linkedHashSet);
-        if (this.getConfig().getBoolean("alert-staff", true)) {
+        if (this.alertStaff) {
             Component string2;
             string2 = Msg.prefixed(((TextComponent)Component.text((String)player.getName(), (TextColor)NamedTextColor.WHITE).append((Component)Component.text((String)" detected with: ", (TextColor)NamedTextColor.GRAY))).append((Component)Component.text((String)string, (TextColor)NamedTextColor.YELLOW)));
+            // Recipients live on their own regions, so each is messaged from its own scheduler rather
+            // than from whichever region produced this result.
             for (Player player2 : Bukkit.getOnlinePlayers()) {
-                if (!player2.hasPermission("testffa.alerts")) continue;
-                player2.sendMessage((Component)string2);
+                Sched.onPlayer((Plugin)this, player2, 0, () -> {
+                    if (player2.hasPermission("testffa.alerts")) {
+                        player2.sendMessage((Component)string2);
+                    }
+                }, null);
             }
             this.getLogger().info(player.getName() + " detected with: " + string);
         }
-        if (this.getConfig().getBoolean("detection-log.enabled", false)) {
+        if (this.detectionLogEnabled) {
             this.logDetection(player, set);
         }
     }
 
-    private void logDetection(Player player, Set<String> set) {
+    // synchronized because results for different players are reported from different region threads and
+    // this appends to one shared file.
+    private synchronized void logDetection(Player player, Set<String> set) {
         try {
-            String string = this.getConfig().getString("detection-log.file", "detections.jsonl");
-            Path path = Paths.get(this.getDataFolder().getAbsolutePath(), string);
+            Path path = Paths.get(this.getDataFolder().getAbsolutePath(), this.detectionLogFile);
             StringBuilder stringBuilder = new StringBuilder("{\"time\":").append(Instant.now().toEpochMilli()).append(",\"player\":\"").append(player.getName()).append("\"").append(",\"uuid\":\"").append(player.getUniqueId()).append("\"").append(",\"mods\":[");
             int n = 0;
             for (String string2 : set) {
@@ -403,7 +421,7 @@ extends JavaPlugin {
 
     public Set<String> scanPassive(Player player, DetectionScope scope) {
         HashSet<String> hashSet = new HashSet<String>(this.catalog.detect(player, scope));
-        this.passiveResults.computeIfAbsent(player.getUniqueId(), uUID -> new EnumMap<DetectionScope, Set<String>>(DetectionScope.class))
+        this.passiveResults.computeIfAbsent(player.getUniqueId(), uUID -> new ConcurrentHashMap<DetectionScope, Set<String>>())
                 .put(scope, hashSet);
         return hashSet;
     }
@@ -430,13 +448,23 @@ extends JavaPlugin {
             commandSender.sendMessage(Msg.prefixed(((TextComponent)Component.text((String)"A check is already running on ", (TextColor)NamedTextColor.YELLOW).append((Component)Component.text((String)player.getName(), (TextColor)NamedTextColor.WHITE))).append((Component)Component.text((String)" - wait for it to finish.", (TextColor)NamedTextColor.YELLOW))));
             return false;
         }
-        this.manualCheckSenders.put(player.getUniqueId(), commandSender);
-        this.hackCheckManager.markPending(player.getUniqueId());
-        // Tier 1 only, for the same reason as the on-join path: the full catalog is the manager's
-        // job (it escalates by itself), and a manual check must report the same thing an automatic
-        // one does.
-        this.scanPassive(player, DetectionScope.PRIMARY);
-        this.hackCheckManager.startCheck(player);
+        UUID uuid = player.getUniqueId();
+        this.manualCheckSenders.put(uuid, commandSender);
+        this.hackCheckManager.markPending(uuid);
+        // This runs on the command sender's thread: the console's, or whichever region the sending
+        // admin stands in. startCheck reads the target's world and location to pick sign spots, which on
+        // Folia only the thread that owns the target may do, so the whole check is handed to the
+        // target's own scheduler. If the target leaves first, the sender is told instead of left waiting.
+        Sched.onPlayer((Plugin)this, player, 0, () -> {
+            // Tier 1 only, for the same reason as the on-join path: the full catalog is the manager's
+            // job (it escalates by itself), and a manual check must report the same thing an automatic
+            // one does.
+            this.scanPassive(player, DetectionScope.PRIMARY);
+            this.hackCheckManager.startCheck(player);
+        }, () -> {
+            this.hackCheckManager.clearPending(uuid);
+            this.notifyCheckCancelled(uuid, "the player left before the check finished");
+        });
         return true;
     }
 

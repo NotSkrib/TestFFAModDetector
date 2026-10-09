@@ -172,6 +172,13 @@ recorded rather than hidden.
 
 ### What is explicitly NOT in scope
 
+> **Superseded for Folia, added after this plan was written.** `plugin.yml` now declares
+> `folia-supported: true`, and every scheduled task goes through `Sched` (the Paper API's
+> entity/global region schedulers, which also run on Paper, Purpur and Leaf, so there is still no
+> platform check or branch). The "no `folia-supported`-style flag" and "main-thread assumptions"
+> clauses in the paragraph below no longer describe the code. **Leaf itself remains
+> compatibility-only**, and the `Bukkit.getScheduler()` calls this plan refers to no longer exist.
+
 No `plugin.yml` platform declaration, no `folia-supported`-style flag, no Leaf scheduler calls, no
 async-chunk API usage, no changes to `ModDetectorPlugin`'s main-thread assumptions, and no
 re-verification of the sign-probe geometry beyond the §7 checklist item. **The retarget itself

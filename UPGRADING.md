@@ -56,6 +56,20 @@ plugin; it compiles against Paper's API and stays portable to **Paper and Purpur
 1.21.11**. There is no runtime platform check and nothing Leaf-specific to
 configure.
 
+### Folia
+
+**Folia is supported.** `plugin.yml` declares `folia-supported: true`, and the
+plugin schedules everything through the entity and global-region schedulers that
+the Paper API provides, so the same jar runs on Folia, Paper, Purpur and Leaf.
+Nothing needs configuring. Two things to know:
+
+- PacketEvents must itself be a build that Folia will load; the plugin cannot make
+  up for a PacketEvents that is not Folia-ready.
+- The Folia path has so far been **built and inspected, not run on a live Folia
+  server**. After installing, run `/md check` on yourself and watch the console
+  once before relying on kicks. A thread-ownership exception there is a bug worth
+  reporting.
+
 ### PacketEvents
 
 PacketEvents is a **hard dependency** (`depend: [packetevents]`). The server

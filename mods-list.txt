@@ -1,0 +1,173 @@
+- Meteor Client
+- Meteor Plus
+- Meteor Additions
+- Meteorist
+- Wurst Client
+- Impact Client
+- LiquidBounce
+- Sigma Client
+- Vape
+- Doomsday Client
+- RusherHack
+- Aristois
+- Inertia Client
+- SalHack
+- Konas Client
+- Rise Client
+- Ethanol Backdoor
+- Jex Client
+- ThunderHack
+- ParadiseClient
+- Xynis
+- Lumina Client
+- Hypnotic Client
+- Glazed Client
+- Wave Client
+- CheatUtils
+- Client Spoofer
+- Custom Client Brand
+- Rebrand
+- Mini Hacks
+- HcScr
+- MadXray
+- Kenzo Hack Client
+- X-Ray
+- X13 X-Ray
+- SpeedHack
+- WallHack
+- PingBypass
+- TeleportHack
+- AutoClicker
+- AutoAttack
+- Auto Shield Breaker
+- ChestESP
+- Chest Finder
+- PlayerESP
+- Spawn Radar
+- Omniscience (Invisibility Revealer)
+- HitRange
+- CatLean
+- Fire Client
+- Killaura (generic)
+- Spoofing Translation
+- ExploitPreventer
+- Crystal Core
+- Cart Core
+- Combat Plus
+- Combatify
+- GavinsMod
+- Entity Outliner
+- Spear Core
+- Shield Status
+- Visible Shield Cooldown
+- Bridging Mod
+- Multi Key Bindings
+- Global Macros
+- Spoofed Vanilla Brand
+- Spoofed Geyser Brand
+- Lunar Client
+- Badlion Client
+- Feather Client
+- Salwyrr Client
+- Prism / PolyMC
+- Bedrock (Geyser)
+- LabyMod
+- Missing Client Brand
+- Baritone
+- BleachHack
+- ForgeHax
+- Hyperium
+- Mace Attack Assistance
+- SeedCracker
+- Gamma Utils (Fullbright)
+- See-Through-Lava
+- Freecam (Fabric)
+- Zergatul Freecam
+- Freecam (fork)
+- Xaero's Freelook
+- Perspective Mod
+- Camera Utils
+- FlyMod
+- StepUp
+- Crawl (1-block sneak)
+- Climb Ladders Fast
+- Precise Block Placing
+- Faster Block Placement
+- Pro Placer
+- SmartBlockPlacement
+- Accurate Block Placement
+- AutoSwitch
+- AutoTools
+- Autofish
+- Auto Eat
+- Auto Armor
+- AutoTotemLight
+- Auto Elytra
+- Auto Mace Swap
+- Auto Tool Swap
+- No Delay Mod
+- No Jump Delay
+- Player Highlighter
+- Schematic Printer
+- Litematica
+- MaLiLib (Litematica core)
+- Tweakeroo
+- TweakerMore
+- Axiom (WorldEdit client)
+- WorldDownloader
+- SlotSwap
+- QuickTurn
+- InvMove (move in GUI)
+- KeepThatInventoryOpen
+- Elytra-Chestplate Swapper
+- ViaFabricPlus
+- BetterHitreg
+- Reach Circle
+- Projectile Trajectory Preview
+- Dokko's Hotbar Optimizer
+- TNTHelper
+- WorldEdit CUI
+- Chest Tracker
+- EasierChests
+- Inventory Control Tweaks
+- Shoulder Surfing Reloaded
+- UIUtils
+- World Preview
+- WorldTools
+- ClientCommands
+- ClientSort
+- CommandKeys
+- In-Game Account Switcher
+- Camera Tweaks
+- Camera Enhancements
+- VisibleBarriers
+- SeedFinder
+- PlayerTracker
+- Player Locator
+- Language Translator (Mod)
+- QuickHotkeys
+- InventoryTabs
+- Vivecraft
+- Autocart
+- Flashback
+- Crash Assistant
+- Voyagermap
+- Pixel MINIMAP
+- Map Link
+- VoxelMap
+- XaeroPlus (HUD tweaks)
+- Xaero's Minimap
+- Xaero Map Chest Tracker
+- Trade Cycling
+- Health Indicators
+- Replay Mod
+- Translation Interceptor
+- Cracked/Leaked Client
+- Sodium
+- Iris Shaders
+- Xaero's World Map
+- ReplayMod
+- OptiFine
+- Fabric Loader
+- Forge Loader
+- Distant Horizons

@@ -1,9 +1,9 @@
 package xyz.nim.modDetectorPlugin.hackcheck;
 
+import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.Function;
@@ -23,8 +24,8 @@ import org.bukkit.Location;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
-import org.bukkit.scheduler.BukkitTask;
 import xyz.nim.modDetectorPlugin.ModDetectorPlugin;
+import xyz.nim.modDetectorPlugin.Sched;
 import xyz.nim.modDetectorPlugin.catalog.DetectionScope;
 import xyz.nim.modDetectorPlugin.hackcheck.BedrockDetector;
 import xyz.nim.modDetectorPlugin.hackcheck.HackDefinition;
@@ -37,32 +38,37 @@ public final class HackCheckManager {
     // rather than repeated - a second hardcoded copy is how a permission rename ends up half-applied.
     private static final String BYPASS_NODE = "testffa.bypass";
     private final Plugin plugin;
-    private final Map<UUID, CheckSession> activeChecks = new HashMap<UUID, CheckSession>();
-    private final Set<UUID> pendingKick = new HashSet<UUID>();
+    // Players on different regions are checked on different threads at once on Folia, so these two are
+    // shared mutable state and must be concurrent. A single player's session is only ever advanced from
+    // that player's own scheduler (see Sched), so the CheckSession objects themselves need no lock.
+    private final Map<UUID, CheckSession> activeChecks = new ConcurrentHashMap<UUID, CheckSession>();
+    private final Set<UUID> pendingKick = ConcurrentHashMap.newKeySet();
     private final Random random = new Random();
     // Tier 1 is the ticked detect: list; tier 2 is the whole catalog. Tier 2 only ever probes
     // definitionsFull MINUS definitionsPrimary, so no definition is put on a sign twice for one
     // check and the union of the two passes is exactly the old single full-catalog result.
-    private List<HackDefinition> definitionsPrimary = List.of();
-    private List<HackDefinition> definitionsFull = List.of();
+    // Written by /md reload on the command's thread and read by every player's thread, hence volatile.
+    private volatile List<HackDefinition> definitionsPrimary = List.of();
+    private volatile List<HackDefinition> definitionsFull = List.of();
     private BiFunction<UUID, DetectionScope, Set<String>> passiveCache = (uUID, scope) -> Set.of();
     private BiFunction<Player, DetectionScope, Set<String>> passiveProbe = (player, scope) -> Set.of();
     private Function<String, String> displayResolver = string -> string;
     private Predicate<String> punishResolver = string -> true;
     private Function<String, List<String>> punishmentResolver = string -> List.of();
     private BiConsumer<Player, Set<String>> onResult = (player, set) -> {};
-    private boolean kickEnabled = false;
-    private String kickMessage = "&cUnauthorized modifications detected: <punishable>";
-    private int timeoutTicks = 200;
-    private int betweenBatchTicks = 0;
-    private boolean debug = false;
-    private boolean skipBedrock = true;
-    private String bedrockNamePrefix = ".";
-    private boolean escalate = true;
+    // Settings written by configure() on reload, read from every player's thread: volatile for the same reason.
+    private volatile boolean kickEnabled = false;
+    private volatile String kickMessage = "&cUnauthorized modifications detected: <punishable>";
+    private volatile int timeoutTicks = 200;
+    private volatile int betweenBatchTicks = 0;
+    private volatile boolean debug = false;
+    private volatile boolean skipBedrock = true;
+    private volatile String bedrockNamePrefix = ".";
+    private volatile boolean escalate = true;
     // Protocol-driven defaults, mirroring the hardcoded values this plugin shipped with until
     // they became configurable. The cap is 4 sign lines x keysPerLine definitions.
-    private int batchSize = 80;
-    private int keysPerLine = 20;
+    private volatile int batchSize = 80;
+    private volatile int keysPerLine = 20;
 
     public HackCheckManager(Plugin plugin) {
         this.plugin = plugin;
@@ -134,24 +140,28 @@ public final class HackCheckManager {
         }
         String string4 = this.join(set);
         String string32 = this.join(new LinkedHashSet<String>(arrayList));
-        boolean bl = false;
+        // Expanded here, on the player's thread, because getName() is a player read; the console
+        // dispatch itself is the part that has to leave this thread.
+        ArrayList<PunishCommand> commands = new ArrayList<PunishCommand>();
         for (String string5 : arrayList) {
-            if (!player.isOnline()) {
-                return;
-            }
             for (String string6 : this.punishmentResolver.apply(string5)) {
-                if (!player.isOnline()) {
-                    return;
-                }
-                bl = true;
                 String string7 = ChatColor.translateAlternateColorCodes((char)'&', (String)string6.replace("%player%", player.getName()).replace("%punishable%", string32).replace("%detected%", string4).replace("%mods%", string2).replace("%hacks%", string));
-                this.dbg("running custom punishment for " + string5 + ": " + string7);
-                Bukkit.dispatchCommand((CommandSender)Bukkit.getConsoleSender(), (String)string7);
-                String string8 = string7.stripLeading();
-                if (!HackCheckManager.startsWithIgnoreCase(string8, "kick") && !HackCheckManager.startsWithIgnoreCase(string8, "ban")) continue;
+                commands.add(new PunishCommand(string5, string7));
             }
         }
-        if (bl) {
+        if (!commands.isEmpty()) {
+            // Console commands run on the global region on Folia. They go as one task, in order, so
+            // the isOnline() guard still stops the rest once an earlier command has kicked or banned
+            // the player, exactly as when they ran back to back on the main thread.
+            Sched.onGlobal(this.plugin, () -> {
+                for (PunishCommand command : commands) {
+                    if (!player.isOnline()) {
+                        return;
+                    }
+                    this.dbg("running custom punishment for " + command.modId() + ": " + command.line());
+                    Bukkit.dispatchCommand((CommandSender)Bukkit.getConsoleSender(), (String)command.line());
+                }
+            });
             return;
         }
         String string9 = this.kickMessage.replace("<punishable>", string32).replace("<detected>", string4).replace("<hacks>", string).replace("<mods>", string2);
@@ -421,14 +431,17 @@ public final class HackCheckManager {
             this.dbg(stringBuilder.append(']').toString());
         }
         SignProbe.openProbe(player, checkSession.signLoc, probeLines, this.plugin, this.debug);
-        checkSession.timeoutTask = Bukkit.getScheduler().runTaskLater(this.plugin, () -> {
+        // The player's own scheduler, not the global one: advanceBatch goes on to open the next sign,
+        // which reads the player's world and location. If the player is removed first, the retired
+        // callback drops the session instead of leaving it waiting on a reply that cannot come.
+        checkSession.timeoutTask = Sched.onPlayer(this.plugin, player, this.timeoutTicks, () -> {
             CheckSession checkSession2 = this.activeChecks.get(uUID);
             if (checkSession2 == null || checkSession2 != checkSession || !checkSession.awaitingReply) {
                 return;
             }
             this.dbg("batch " + checkSession.batchIndex + " timed out for " + player.getName());
             this.advanceBatch(player, checkSession);
-        }, (long)this.timeoutTicks);
+        }, () -> this.activeChecks.remove(uUID, checkSession));
     }
 
     public void handleSignResponse(Player player, Location location, String[] stringArray) {
@@ -487,14 +500,14 @@ public final class HackCheckManager {
             checkSession.timeoutTask = null;
         }
         if (this.betweenBatchTicks > 0) {
-            Bukkit.getScheduler().runTaskLater(this.plugin, () -> {
+            Sched.onPlayer(this.plugin, player, this.betweenBatchTicks, () -> {
                 Player onlinePlayer = Bukkit.getPlayer((UUID)checkSession.uuid);
                 if (onlinePlayer != null && onlinePlayer.isOnline()) {
                     this.processBatch(onlinePlayer, checkSession);
                 } else {
                     this.activeChecks.remove(checkSession.uuid);
                 }
-            }, (long)this.betweenBatchTicks);
+            }, () -> this.activeChecks.remove(checkSession.uuid, checkSession));
         } else {
             this.processBatch(player, checkSession);
         }
@@ -526,10 +539,6 @@ public final class HackCheckManager {
         return String.join((CharSequence)", ", linkedHashSet);
     }
 
-    private static boolean startsWithIgnoreCase(String string, String string2) {
-        return string.regionMatches(true, 0, string2, 0, string2.length());
-    }
-
     private void finishCheck(Player player, CheckSession checkSession) {
         UUID uUID = player.getUniqueId();
         // Probe rather than read the cache for the escalated scopes: the scheduled passive task may
@@ -553,19 +562,24 @@ public final class HackCheckManager {
         final Set<String> coveredKeys = new LinkedHashSet<String>();
         DetectionScope scope = DetectionScope.PRIMARY;
         Deque<List<HackDefinition>> batches = new ArrayDeque<List<HackDefinition>>();
-        boolean reloadBarrier = false;
+        // setReloadBarrier() sets this from the /md reload thread while the session runs on the player's.
+        volatile boolean reloadBarrier = false;
         int batchIndex = 0;
         int passIndex = 1;
         List<List<Assignment>> lineAssignments = List.of();
-        boolean awaitingReply = false;
+        // shutdown() ends sessions from the disabling thread, so these two are read across threads.
+        volatile boolean awaitingReply = false;
         List<Location> signSpots = List.of();
         Location signLoc;
-        BukkitTask timeoutTask;
+        volatile ScheduledTask timeoutTask;
 
         CheckSession(UUID uUID, DetectionScope detectionScope) {
             this.uuid = uUID;
             this.scope = detectionScope;
         }
+    }
+
+    private record PunishCommand(String modId, String line) {
     }
 
     private static final class Assignment {

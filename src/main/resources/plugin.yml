@@ -2,6 +2,9 @@ name: TestFFAModDetector
 version: '${project.version}'
 main: xyz.nim.modDetectorPlugin.ModDetectorPlugin
 api-version: '1.21.11'
+# Folia refuses to load a plugin without this flag. Every scheduled task goes through Sched, which uses
+# the entity/global schedulers (Paper API), so the same jar still runs on Paper, Purpur and Leaf.
+folia-supported: true
 author: TestFFA
 description: TestFFAModDetector - channel-based + sign-probe mod/hack-client detection, + two-tier detect list.
 # Legacy Bukkit plugin type deliberately, NOT paper-plugin.yml: Paper loads all

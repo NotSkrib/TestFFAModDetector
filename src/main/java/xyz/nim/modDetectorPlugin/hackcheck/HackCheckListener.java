@@ -1,11 +1,10 @@
 package xyz.nim.modDetectorPlugin.hackcheck;
 
-import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
-import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -15,6 +14,7 @@ import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.plugin.Plugin;
 import xyz.nim.modDetectorPlugin.ModDetectorPlugin;
+import xyz.nim.modDetectorPlugin.Sched;
 import xyz.nim.modDetectorPlugin.catalog.DetectionScope;
 import xyz.nim.modDetectorPlugin.hackcheck.HackCheckManager;
 
@@ -22,11 +22,12 @@ public final class HackCheckListener
 implements Listener {
     private final Plugin plugin;
     private final HackCheckManager manager;
-    private final Set<UUID> firstJoinSeen = new HashSet<UUID>();
-    private boolean onJoinEnabled;
-    private int onJoinDelayTicks;
-    private boolean onlyFirstJoin;
-    private int passiveDelayTicks = 5;
+    private final Set<UUID> firstJoinSeen = ConcurrentHashMap.newKeySet();
+    // configureOnJoin runs on the reload thread; the join handler reads these on a player's region thread.
+    private volatile boolean onJoinEnabled;
+    private volatile int onJoinDelayTicks;
+    private volatile boolean onlyFirstJoin;
+    private volatile int passiveDelayTicks = 5;
 
     public HackCheckListener(Plugin plugin, HackCheckManager hackCheckManager) {
         this.plugin = plugin;
@@ -51,20 +52,23 @@ implements Listener {
     }
 
     private void handleJoin(Player player) {
+        // Read on the player's region thread, which is where PlayerJoinEvent is dispatched anyway.
         boolean bl = !player.hasPlayedBefore();
         this.firstJoinSeen.add(player.getUniqueId());
-        Bukkit.getScheduler().runTaskLater(this.plugin, () -> this.runPassive(player), (long)this.passiveDelayTicks);
+        Sched.onPlayer(this.plugin, player, this.passiveDelayTicks, () -> this.runPassive(player), null);
         if (!this.onJoinEnabled || this.onlyFirstJoin && !bl) {
             return;
         }
         // markPending must run before the delayed startCheck: it is what tells the passive task
         // that an active pipeline already owns this player's result.
         this.manager.markPending(player.getUniqueId());
-        Bukkit.getScheduler().runTaskLater(this.plugin, () -> {
+        // Both tasks run on the player's own scheduler: startCheck reads the player's world and
+        // location to pick sign spots, which only the owning region thread may do on Folia.
+        Sched.onPlayer(this.plugin, player, this.onJoinDelayTicks, () -> {
             if (player.isOnline() && this.firstJoinSeen.contains(player.getUniqueId())) {
                 this.manager.startCheck(player);
             }
-        }, (long)this.onJoinDelayTicks);
+        }, () -> this.manager.clearPending(player.getUniqueId()));
     }
 
     private void runPassive(Player player) {

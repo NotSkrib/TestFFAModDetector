@@ -19,8 +19,11 @@ public final class ModCatalog {
     // Every id in here is probed in tier 1. The old whitelistMode flag is gone on purpose: the
     // detect: list is the only thing that decides whether a mod is looked for, so there is no
     // second mode whose semantics could be misread.
-    private Map<String, ModDef> known = new HashMap<String, ModDef>();
-    private Set<String> ticked = new HashSet<String>();
+    //
+    // Both fields are only ever replaced wholesale by load(), never edited in place, so volatile is all
+    // a reader on another region thread needs to see a reload.
+    private volatile Map<String, ModDef> known = new HashMap<String, ModDef>();
+    private volatile Set<String> ticked = new HashSet<String>();
 
     public void load(ConfigurationSection configurationSection, ConfigurationSection configurationSection2, List<String> list, Logger warn) {
         HashMap<String, ModDef> hashMap = new HashMap<String, ModDef>();

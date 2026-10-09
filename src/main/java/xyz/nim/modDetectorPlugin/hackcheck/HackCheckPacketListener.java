@@ -9,10 +9,10 @@ import com.github.retrooper.packetevents.netty.buffer.ByteBufHelper;
 import com.github.retrooper.packetevents.protocol.packettype.PacketType;
 import com.github.retrooper.packetevents.util.Vector3i;
 import com.github.retrooper.packetevents.wrapper.PacketWrapper;
-import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
+import xyz.nim.modDetectorPlugin.Sched;
 
 import java.nio.charset.StandardCharsets;
 
@@ -50,10 +50,15 @@ extends PacketListenerAbstract {
             return;
         }
         try {
+            // The packet bytes must be consumed here, on the netty thread, before the buffer is
+            // released. Everything that touches the player (getWorld included) waits for the hop to
+            // the player's own scheduler below: this thread belongs to no region on Folia.
             RawUpdateSign sign = readUpdateSignSafely(packetReceiveEvent);
-            Location location = new Location(player.getWorld(), sign.position.getX(), sign.position.getY(), sign.position.getZ());
             packetReceiveEvent.setCancelled(true);
-            Bukkit.getScheduler().runTask(this.plugin, () -> this.manager.handleSignResponse(player, location, sign.lines));
+            Sched.onPlayer(this.plugin, player, 0, () -> {
+                Location location = new Location(player.getWorld(), sign.position.getX(), sign.position.getY(), sign.position.getZ());
+                this.manager.handleSignResponse(player, location, sign.lines);
+            }, null);
         } catch (Throwable throwable) {
             this.plugin.getLogger().warning("[HackCheck] failed to read UPDATE_SIGN: " + throwable.getMessage());
         }

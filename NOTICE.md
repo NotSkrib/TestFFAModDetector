@@ -36,5 +36,10 @@ licensed under GPLv3 and this notice documents the substantive changes made:
   probes only ticked mods; tier 2 re-probes the unticked remainder once tier 1 hits,
   so a detection report names everything the client is actually running rather than
   only the first thing that tripped.
+- v5.0.0 - Folia support added: `plugin.yml` declares `folia-supported: true`, every
+  scheduled task goes through the Paper API's entity/global region schedulers (which
+  also run on plain Paper and Leaf, so there is no platform check), console punishment
+  commands are dispatched on the global region, and per-player state is held in
+  concurrent collections.
 
 Source for this fork is available alongside its distributed binary, per GPLv3 §5/§6.

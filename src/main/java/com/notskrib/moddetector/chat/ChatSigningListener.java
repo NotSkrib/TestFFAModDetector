@@ -12,22 +12,15 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.plugin.Plugin;
 
-/**
- * Catches clients that strip chat signatures, which is the one server-observable trace left by
- * anti-detection mods that otherwise look exactly like vanilla.
- *
- * A signed message is the odd one out among mod signals: it is not a channel, a brand or a
- * translation key, so an anti-detection mod has to specifically suppress the chat protocol to hide
- * it. OpSec does exactly that under Signing Mode: OFF.
- *
- * Ships alert-only and off by default. Unsigned chat has innocent causes - a server without
- * enforce-secure-profile, a player who disabled chat signing in their account settings, a client too
- * old to sign - so punishing on it is a decision only the operator has the context to make.
- */
+// A signature is the one mod signal that is not a channel, brand or translation key, so hiding it
+// means deliberately suppressing the chat protocol. OpSec does this under Signing Mode: OFF.
+//
+// Alert-only and off by default: unsigned chat has innocent causes (a server without
+// enforce-secure-profile, a player who disabled signing, an old client), so punishing it is the
+// operator's call after watching their own players.
 public final class ChatSigningListener
 implements Listener {
-    // Only a player whose messages were ALL unsigned trips this. One unsigned message mid-session can be
-    // a rate-limit or a suppressed-command case; a pattern of them cannot.
+    // Consecutive, so one unsigned message amid signed ones is not a signal.
     private static final int MIN_UNSIGNED_MESSAGES = 5;
     private final Plugin plugin;
     private final Map<UUID, Integer> unsignedCounts = new ConcurrentHashMap<UUID, Integer>();
@@ -59,6 +52,7 @@ implements Listener {
         if (!this.enabled) {
             return;
         }
+        // A non-null SignedMessage can still be unsigned: signature() is separately nullable.
         SignedMessage signed = event.signedMessage();
         if (signed != null && signed.signature() != null) {
             return;
@@ -79,7 +73,7 @@ implements Listener {
             this.plugin.getLogger().warning("[ChatSigning] handling unsigned chat failed: " + throwable);
         }
         finally {
-            // One report per player, however long they keep chatting unsigned.
+            // Reset so this reports once per player, not once per message.
             this.unsignedCounts.remove(player.getUniqueId());
         }
     }

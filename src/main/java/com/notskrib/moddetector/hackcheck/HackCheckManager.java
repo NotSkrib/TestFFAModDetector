@@ -33,22 +33,19 @@ import com.notskrib.moddetector.hackcheck.HackCheckSettings;
 import com.notskrib.moddetector.hackcheck.SignProbe;
 
 public final class HackCheckManager {
-    // The global bypass node ("<node>" exempts a player entirely, "<node>.<id>" exempts one definition).
-    // Both forms are looked up per player and per definition, so the name is built from this one constant
-    // rather than repeated - a second hardcoded copy is how a permission rename ends up half-applied.
+    // Both bypass forms are looked up per definition, so the name is built here rather than repeated -
+    // a second hardcoded copy is how a permission rename ends up half-applied.
     private static final String BYPASS_NODE = "testffa.bypass";
     private final Plugin plugin;
-    // Players on different regions are checked on different threads at once on Folia, so these two are
-    // shared mutable state and must be concurrent. A single player's session is only ever advanced from
-    // that player's own scheduler (see Sched), so the CheckSession objects themselves need no lock.
+    // Concurrent: Folia checks different players on different threads. Each session is only ever
+    // advanced from its own player's scheduler (see Sched), so the sessions need no lock.
     private final Map<UUID, CheckSession> activeChecks = new ConcurrentHashMap<UUID, CheckSession>();
     private final Set<UUID> pendingKick = ConcurrentHashMap.newKeySet();
     private final Random random = new Random();
-    // Tier 1 is the ticked detect: list; tier 2 is the whole catalog. Tier 2 only ever probes
-    // definitionsFull MINUS definitionsPrimary, so no definition is put on a sign twice for one
-    // check and the union of the two passes is exactly the old single full-catalog result.
-    // Written by /md reload on the command's thread and read by every player's thread, hence volatile.
+    // Tier 2 only ever probes definitionsFull MINUS definitionsPrimary, so no definition is put on a
+    // sign twice and the union of both passes is the old single full-catalog result.
     private volatile List<HackDefinition> definitionsPrimary = List.of();
+    // Volatile: /md reload writes these on the command thread while every player's thread reads them.
     private volatile List<HackDefinition> definitionsFull = List.of();
     private BiFunction<UUID, DetectionScope, Set<String>> passiveCache = (uUID, scope) -> Set.of();
     private BiFunction<Player, DetectionScope, Set<String>> passiveProbe = (player, scope) -> Set.of();
@@ -56,7 +53,7 @@ public final class HackCheckManager {
     private Predicate<String> punishResolver = string -> true;
     private Function<String, List<String>> punishmentResolver = string -> List.of();
     private BiConsumer<Player, Set<String>> onResult = (player, set) -> {};
-    // Settings written by configure() on reload, read from every player's thread: volatile for the same reason.
+    // Written by configure() on reload, read from every player's thread.
     private volatile boolean kickEnabled = false;
     private volatile String kickMessage = "&cUnauthorized modifications detected: <punishable>";
     private volatile int timeoutTicks = 200;
@@ -65,8 +62,7 @@ public final class HackCheckManager {
     private volatile boolean skipBedrock = true;
     private volatile String bedrockNamePrefix = ".";
     private volatile boolean escalate = true;
-    // Protocol-driven defaults, mirroring the hardcoded values this plugin shipped with until
-    // they became configurable. The cap is 4 sign lines x keysPerLine definitions.
+    // Cap is 4 sign lines x keysPerLine definitions; see the batching note in processBatch.
     private volatile int batchSize = 80;
     private volatile int keysPerLine = 20;
 
@@ -105,8 +101,8 @@ public final class HackCheckManager {
 
     public void handlePassiveResults(Player player, Set<String> tier1) {
         UUID uuid = player.getUniqueId();
-        // Both guards precede the alert because a tier-1-only report is a partial report: telling
-        // staff "detected: x" a second before the full list arrives is worse than saying nothing.
+        // Both guards precede the alert because a tier-1-only report is partial, and a partial report is
+        // worse than none.
         if (player.hasPermission(BYPASS_NODE)) {
             this.pendingKick.remove(uuid);
             return;
@@ -117,8 +113,7 @@ public final class HackCheckManager {
         }
         HashSet<String> hashSet = new HashSet<String>(tier1);
         if (this.escalate && !tier1.isEmpty()) {
-            // Re-reads server-side brand/channel state, not the client, so completing the tier-2
-            // picture here costs no network traffic and no second sign-probe.
+            // Re-reads server-side brand/channel state, so completing tier 2 costs no network traffic.
             hashSet.addAll(this.passiveProbe.apply(player, DetectionScope.FULL));
         }
         this.onResult.accept(player, hashSet);
@@ -140,8 +135,7 @@ public final class HackCheckManager {
         }
         String string4 = this.join(set);
         String string32 = this.join(new LinkedHashSet<String>(arrayList));
-        // Expanded here, on the player's thread, because getName() is a player read; the console
-        // dispatch itself is the part that has to leave this thread.
+        // Placeholders are filled here, on the player's thread; only the dispatch has to leave it.
         ArrayList<PunishCommand> commands = new ArrayList<PunishCommand>();
         for (String string5 : arrayList) {
             for (String string6 : this.punishmentResolver.apply(string5)) {
@@ -150,9 +144,8 @@ public final class HackCheckManager {
             }
         }
         if (!commands.isEmpty()) {
-            // Console commands run on the global region on Folia. They go as one task, in order, so
-            // the isOnline() guard still stops the rest once an earlier command has kicked or banned
-            // the player, exactly as when they ran back to back on the main thread.
+            // One task, in order, so the isOnline() guard still stops the rest once an earlier
+            // command has kicked or banned the player.
             Sched.onGlobal(this.plugin, () -> {
                 for (PunishCommand command : commands) {
                     if (!player.isOnline()) {
@@ -183,8 +176,7 @@ public final class HackCheckManager {
 
     public void setReloadBarrier() {
         for (CheckSession checkSession : this.activeChecks.values()) {
-            // The definition lists are about to be swapped underneath the session, so a "pass 2"
-            // assembled from the new config would not correspond to the config pass 1 ran under.
+            // A pass 2 assembled from the new config would not match the config pass 1 ran under.
             checkSession.reloadBarrier = true;
         }
     }
@@ -221,26 +213,21 @@ public final class HackCheckManager {
         }
         if (this.skipBedrock && BedrockDetector.isBedrock(player, this.bedrockNamePrefix)) {
             this.dbg("skipping active sign-probe for " + player.getName() + " (Bedrock/Floodgate)");
-            // Report explicitly empty rather than merging the passive scan: a Bedrock client cannot
-            // answer a sign probe at all, so anything it "matched" would be a false positive. The
-            // empty result still releases a waiting /moddetector check sender.
+            // Reported explicitly empty: a Bedrock client cannot answer a sign probe, so any match
+            // would be a false positive. Still releases a waiting /md check sender.
             this.pendingKick.remove(player.getUniqueId());
             this.onResult.accept(player, Set.of());
             return;
         }
         List<HackDefinition> arrayList = this.withoutBypassed(player, this.definitionsPrimary);
         if (arrayList.isEmpty()) {
-            // Nothing active to probe. Still escalate if the passive tier-1 picture is non-empty -
-            // a client can be identified purely by brand/channel with no sign reply needed.
+            // Nothing active left to probe, but a client can still be identified by brand/channel alone.
             this.endPass(player, new CheckSession(player.getUniqueId(), DetectionScope.PRIMARY));
             return;
         }
-        // Batching at 80 definitions/sign (20/line by default). Packing everything onto one sign blew past the real
-        // ~384-char protocol cap per line (some real key strings run 40-60 chars) - anything past that point silently
-        // gets truncated by the safe reader and reads back as "detected" for every player, hack or not. 20/line keeps
-        // that from happening in the common case; the safe reader in HackCheckPacketListener still protects against a
-        // crash on the rare line that overflows anyway, it just won't false-positive as often as 56/line did. Both
-        // numbers are hack-checks.batch-size / hack-checks.keys-per-line now; raising either re-arms that failure mode.
+        // Past the real ~384-char per-line cap anything is silently truncated by the safe reader and reads
+        // back as "detected" for everyone. 20/line avoids that; both numbers are configurable now, and
+        // raising either re-arms the failure mode.
         CheckSession checkSession = new CheckSession(player.getUniqueId(), DetectionScope.PRIMARY);
         checkSession.batches = this.batch(arrayList);
         this.beginPass(player, checkSession);
@@ -249,9 +236,7 @@ public final class HackCheckManager {
     private void beginPass(Player player, CheckSession checkSession) {
         List<Location> list = SignProbe.findSignSpots(player, checkSession.batches.size());
         if (list.isEmpty()) {
-            // Nothing can be put on a sign, so there is nothing more to probe actively. Widen the
-            // merge to the full catalog instead: the passive picture is still worth completing, and
-            // it is server-side state, so it costs nothing.
+            // No sign means no probe, so widen the merge instead: the passive picture is server-side and free.
             this.dbg("no sign spot found for " + player.getName() + ", finishing check with 0 hacks");
             this.activeChecks.remove(checkSession.uuid);
             checkSession.scope = DetectionScope.FULL;
@@ -281,8 +266,8 @@ public final class HackCheckManager {
         return arrayList;
     }
 
-    // Applied to BOTH passes. If it only filtered pass 1, a bypassed ticked mod would simply count
-    // as "uncovered" and come back through escalation, making the permission do nothing at all.
+    // Applied to BOTH passes: filtering only pass 1 would let a bypassed ticked mod return through
+    // escalation, making the permission do nothing.
     private boolean isModBypassed(Player player, String modId) {
         String string = BYPASS_NODE + "." + modId;
         return player.isPermissionSet(string) && player.hasPermission(string);
@@ -318,8 +303,7 @@ public final class HackCheckManager {
         if (hashSet.isEmpty()) {
             return List.of();
         }
-        // Set difference on the dedupe key, so a definition probed in pass 1 can never be probed
-        // again in pass 2 regardless of what the config did in between.
+        // Subtract on the dedupe key, so pass 1 can never be probed twice regardless of config changes.
         ArrayList<HackDefinition> arrayList = new ArrayList<HackDefinition>();
         for (HackDefinition hackDefinition : this.definitionsFull) {
             if (checkSession.coveredKeys.contains(HackCheckManager.definitionKey(hackDefinition))) continue;
@@ -329,8 +313,7 @@ public final class HackCheckManager {
         return arrayList;
     }
 
-    // Counted over the union of both passes, and emitted once, so an admin sees one line per check
-    // rather than one per pass.
+    // Counted over both passes, emitted once, so an admin sees one line per check.
     private void warnIfBypassed(Player player) {
         if (this.definitionsFull.isEmpty()) {
             return;
@@ -356,8 +339,7 @@ public final class HackCheckManager {
         return linkedHashSet;
     }
 
-    // The same key dedupeHackDefinitions() uses on the plugin side. Both must stay identical or
-    // pass 1 / pass 2 stop being a true partition and definitions get probed twice.
+    // Must stay identical to dedupeHackDefinitions()'s key, or the two passes stop being a partition.
     private static String definitionKey(HackDefinition hackDefinition) {
         return hackDefinition.id() + "\u0000" + String.valueOf((Object)hackDefinition.mode()) + "\u0000" + hackDefinition.key();
     }
@@ -368,9 +350,8 @@ public final class HackCheckManager {
             this.endSession(checkSession);
         }
         this.pendingKick.remove(uUID);
-        // A manual check's sender is waiting specifically for this result, and a cancelled check can
-        // never produce one. Released here so /md check on a quitting player reports that instead
-        // of leaving the admin watching a line that will never be answered.
+        // A cancelled check never produces a result, so the waiting sender is told instead of left
+        // watching a line that will never be answered.
         if (this.plugin instanceof ModDetectorPlugin) {
             ((ModDetectorPlugin)this.plugin).notifyCheckCancelled(uUID, "the player left before the check finished");
         }
@@ -431,9 +412,7 @@ public final class HackCheckManager {
             this.dbg(stringBuilder.append(']').toString());
         }
         SignProbe.openProbe(player, checkSession.signLoc, probeLines, this.plugin, this.debug);
-        // The player's own scheduler, not the global one: advanceBatch goes on to open the next sign,
-        // which reads the player's world and location. If the player is removed first, the retired
-        // callback drops the session instead of leaving it waiting on a reply that cannot come.
+        // Not the global scheduler: advanceBatch opens the next sign, which reads the player's world.
         checkSession.timeoutTask = Sched.onPlayer(this.plugin, player, this.timeoutTicks, () -> {
             CheckSession checkSession2 = this.activeChecks.get(uUID);
             if (checkSession2 == null || checkSession2 != checkSession || !checkSession.awaitingReply) {
@@ -541,9 +520,8 @@ public final class HackCheckManager {
 
     private void finishCheck(Player player, CheckSession checkSession) {
         UUID uUID = player.getUniqueId();
-        // Probe rather than read the cache for the escalated scopes: the scheduled passive task may
-        // never have run (delay 0, queue ordering, a reload, a manual check on a long-online player),
-        // and a partial report is exactly what this feature exists to avoid.
+        // Probe rather than read the cache: the scheduled passive task may never have run, and a
+        // partial report defeats the point of escalating.
         HashSet<String> hashSet = new HashSet<String>(checkSession.detectedHacks);
         hashSet.addAll(this.passiveProbe.apply(player, DetectionScope.PRIMARY));
         if (checkSession.scope == DetectionScope.FULL) {
@@ -562,12 +540,12 @@ public final class HackCheckManager {
         final Set<String> coveredKeys = new LinkedHashSet<String>();
         DetectionScope scope = DetectionScope.PRIMARY;
         Deque<List<HackDefinition>> batches = new ArrayDeque<List<HackDefinition>>();
-        // setReloadBarrier() sets this from the /md reload thread while the session runs on the player's.
+        // Set by setReloadBarrier() on the reload thread, read on the player's.
         volatile boolean reloadBarrier = false;
         int batchIndex = 0;
         int passIndex = 1;
         List<List<Assignment>> lineAssignments = List.of();
-        // shutdown() ends sessions from the disabling thread, so these two are read across threads.
+        // shutdown() ends sessions from the disabling thread.
         volatile boolean awaitingReply = false;
         List<Location> signSpots = List.of();
         Location signLoc;

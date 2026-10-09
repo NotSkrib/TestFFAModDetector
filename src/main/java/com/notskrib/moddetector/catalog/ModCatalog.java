@@ -16,12 +16,9 @@ import org.bukkit.entity.Player;
 import com.notskrib.moddetector.hackcheck.HackDefinition;
 
 public final class ModCatalog {
-    // Every id in here is probed in tier 1. The old whitelistMode flag is gone on purpose: the
-    // detect: list is the only thing that decides whether a mod is looked for, so there is no
-    // second mode whose semantics could be misread.
-    //
-    // Both fields are only ever replaced wholesale by load(), never edited in place, so volatile is all
-    // a reader on another region thread needs to see a reload.
+    // whitelistMode is gone on purpose: the detect: list is the only thing deciding whether a mod is
+    // looked for, so there is no second mode whose semantics could be misread. Both fields are only
+    // ever replaced wholesale by load(), so volatile is enough to publish a reload to other threads.
     private volatile Map<String, ModDef> known = new HashMap<String, ModDef>();
     private volatile Set<String> ticked = new HashSet<String>();
 
@@ -44,8 +41,8 @@ public final class ModCatalog {
                 continue;
             }
             if (!this.known.containsKey(string2)) {
-                // Not fatal: a custom-mods: entry or a hacks: id may legitimately be ticked, and
-                // the full catalog is still covered by tier 2. Say so once per bad id, then move on.
+                // Not fatal: a custom-mods: entry or hacks: id may legitimately be ticked, and tier 2
+                // still covers the full catalog.
                 if (warn != null) {
                     warn.warning("detect: '" + string2 + "' is not in the mods: or custom-mods: catalog - ignoring it.");
                 }

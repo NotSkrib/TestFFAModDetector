@@ -25,7 +25,7 @@ implements Listener {
     private final HackCheckManager manager;
     private final Set<UUID> firstJoinSeen = ConcurrentHashMap.newKeySet();
     private volatile ChatSigningListener chatSigningListener;
-    // configureOnJoin runs on the reload thread; the join handler reads these on a player's region thread.
+    // Written by configureOnJoin on the reload thread, read on a player's region thread.
     private volatile boolean onJoinEnabled;
     private volatile int onJoinDelayTicks;
     private volatile boolean onlyFirstJoin;
@@ -58,18 +58,16 @@ implements Listener {
     }
 
     private void handleJoin(Player player) {
-        // Read on the player's region thread, which is where PlayerJoinEvent is dispatched anyway.
+        // PlayerJoinEvent is dispatched on the player's own region thread.
         boolean bl = !player.hasPlayedBefore();
         this.firstJoinSeen.add(player.getUniqueId());
         Sched.onPlayer(this.plugin, player, this.passiveDelayTicks, () -> this.runPassive(player), null);
         if (!this.onJoinEnabled || this.onlyFirstJoin && !bl) {
             return;
         }
-        // markPending must run before the delayed startCheck: it is what tells the passive task
-        // that an active pipeline already owns this player's result.
+        // markPending first: it is what tells the passive task an active pipeline owns this result.
         this.manager.markPending(player.getUniqueId());
-        // Both tasks run on the player's own scheduler: startCheck reads the player's world and
-        // location to pick sign spots, which only the owning region thread may do on Folia.
+        // The player's scheduler: startCheck reads their world to pick sign spots.
         Sched.onPlayer(this.plugin, player, this.onJoinDelayTicks, () -> {
             if (player.isOnline() && this.firstJoinSeen.contains(player.getUniqueId())) {
                 this.manager.startCheck(player);
@@ -82,9 +80,8 @@ implements Listener {
             if (!player.isOnline() || !this.firstJoinSeen.contains(player.getUniqueId())) {
                 return;
             }
-            // Tier 1 only. This single argument is the whole design: if the passive scan read the
-            // full catalog, every vanilla/Fabric client would trip on its own brand string and
-            // escalate on every join, which is the old behaviour with extra steps.
+            // Tier 1 only. Reading the full catalog here would make every vanilla or Fabric client trip on
+            // its own brand and escalate on every join.
             Set<String> set = ((ModDetectorPlugin)this.plugin).scanPassive(player, DetectionScope.PRIMARY);
             if (set.isEmpty()) {
                 return;

@@ -52,15 +52,12 @@ extends JavaPlugin {
     private static final int DEFAULT_PASSIVE_DELAY_TICKS = 5;
     private static final int DEFAULT_TIMEOUT_TICKS = 40;
     private static final int DEFAULT_BETWEEN_BATCH_TICKS = 0;
-    // Report order, most-serious first. An admin triaging a detection list reads it top-down, so a
-    // CHEAT hit must not sit below a LAUNCHER one. UNKNOWN last: it is what an id the catalog has
-    // never heard of resolves to, so it is the least informative entry, not the most urgent.
+    // Report order, most-serious first, so a CHEAT hit never sits below a LAUNCHER one. UNKNOWN is
+    // last: it is what an uncatalogued id resolves to.
     private static final List<String> CATEGORY_ORDER = List.of("CHEAT", "SUSPICIOUS", "LAUNCHER", "UTILITY", "UNKNOWN");
-    // A "detect:" key at column 0, with an optional inline flow list and an optional trailing
-    // comment. Group 1 is the flow list; a non-empty one is a shape this editor does not write and
-    // will not rewrite, so it is reported rather than silently reformatted.
+    // Group 1 is the flow list; a non-empty one is a shape this editor will not rewrite.
     private static final Pattern DETECT_KEY = Pattern.compile("^detect:\\s*(\\[.*\\])?\\s*(#.*)?$");
-    // Space-indented "- id" only. A tab-indented, deeper-indented or commented line is never consumed.
+    // Space-indented only, so a tab-indented or commented line is never consumed.
     private static final Pattern DETECT_ITEM = Pattern.compile("^[ ]+- (.+)$");
     private final ModCatalog catalog = new ModCatalog();
     private HackCheckManager hackCheckManager;
@@ -73,16 +70,14 @@ extends JavaPlugin {
     private volatile boolean kickEnabled = false;
     private volatile boolean escalateOnDetection = true;
     private volatile int passiveDelayTicks = 5;
-    // Read from a player's region thread in handleResult, so these are cached at reload rather than
-    // pulled from getConfig() there: Bukkit's config map is not safe to read while a reload swaps it.
+    // Read from a player's region thread, so cached at reload rather than pulled from getConfig()
+// there, which a concurrent reload could be swapping.
     private volatile boolean alertStaff = true;
     private volatile boolean detectionLogEnabled = false;
     private volatile String detectionLogFile = "detections.jsonl";
-    // One entry per player per scope, so a tier-1 and a tier-2 passive scan of the same player do
-    // not overwrite each other. Nothing iterates the inner map, only get/put, so a hash map is enough.
-    //
-    // All three maps are concurrent: joins, results and /md check for different players land on
-    // different region threads at once on Folia, and a plain HashMap corrupts under that.
+    // One entry per player per scope, so a tier-1 and tier-2 scan of the same player do not
+    // overwrite each other. Nothing iterates the inner map, so a plain hash map is enough.
+    // All three are concurrent: Folia lands different players on different threads.
     private final Map<UUID, Map<DetectionScope, Set<String>>> passiveResults = new ConcurrentHashMap<UUID, Map<DetectionScope, Set<String>>>();
     private final Map<UUID, Set<String>> lastResult = new ConcurrentHashMap<UUID, Set<String>>();
     private final Map<UUID, CommandSender> manualCheckSenders = new ConcurrentHashMap<UUID, CommandSender>();
@@ -92,8 +87,7 @@ extends JavaPlugin {
             this.enable();
         }
         catch (Throwable throwable) {
-            // A bad config.yml must not leave a half-wired plugin registered: disable cleanly so the
-            // server keeps running and the admin sees the stack trace in the console.
+            // A bad config.yml must not leave a half-wired plugin registered.
             this.getLogger().log(java.util.logging.Level.SEVERE, Msg.BRAND + " failed to enable; disabling.", throwable);
             this.getServer().getPluginManager().disablePlugin(this);
         }
@@ -136,8 +130,7 @@ extends JavaPlugin {
             if (this.hackCheckManager != null) {
                 this.hackCheckManager.shutdown();
             }
-            // shutdown() deliberately produces no result, so a /md check waiting on a sender would
-            // otherwise never be told anything and would stay in manualCheckSenders forever.
+            // shutdown() produces no result, so release any waiting sender rather than leaking it.
             for (UUID uuid : new ArrayList<UUID>(this.manualCheckSenders.keySet())) {
                 this.notifyCheckCancelled(uuid, "the plugin was disabled before the check finished");
             }
@@ -154,8 +147,8 @@ extends JavaPlugin {
         this.loadCatalog();
         this.loadHackDefinitions();
         if (this.hackCheckManager != null) {
-            // Any in-flight check keeps the definition list it started with, and finishes instead
-            // of escalating. It is the same object in the same map slot, so nothing else has to know.
+            // An in-flight check keeps the definition list it started with and finishes instead of
+            // escalating, so nothing else has to know.
             this.hackCheckManager.setReloadBarrier();
         }
         boolean bl = this.getConfig().getBoolean("hack-checks.kick", false);
@@ -219,12 +212,10 @@ extends JavaPlugin {
         this.catalog.load(configurationSection, configurationSection2, list, this.getLogger());
     }
 
-    // Pre-5.0.0 installs carry mode: + blocked-mods: instead of detect:. Rather than rewriting the
-    // admin's file (which would cost every comment), derive the ticked set in memory and say so loudly.
-    // Both modes translate exactly: whitelist ticked the listed ids, blacklist ticked everything EXCEPT
-    // the listed ids, so the complement of blocked-mods is the one reading that reproduces what 4.x
-    // detected. Falling back to the shipped default here instead would quietly re-enable every mod the
-    // admin had deliberately switched off, which is the opposite of a safe migration.
+    // Pre-5.0.0 installs carry mode: + blocked-mods: instead of detect:. Derive the ticked set in
+    // memory rather than rewriting the admin's file, which would cost every comment. A whitelist
+    // ticked the listed ids and a blacklist ticked everything else, so both translate exactly;
+    // falling back to the shipped default would quietly re-enable mods the admin had switched off.
     private List<String> deriveLegacyDetectList() {
         java.util.logging.Logger logger = this.getLogger();
         String string = this.getConfig().getString("mode", "blacklist");
@@ -246,9 +237,8 @@ extends JavaPlugin {
                 }
                 arrayList.add(string3);
             }
-            // Ticking this many ids means tier 1 will match on ordinary players and escalate on most
-            // joins, which is exactly what 4.x already did - the admin's exclusions were the only
-            // throttle they had, and those are honoured above.
+            // Tier 1 will match ordinary players and escalate on most joins, which is what 4.x already did -
+            // the admin's exclusions were the only throttle they had, and those are honoured above.
             logger.warning("Legacy mode: " + string + " over " + list.size() + " blocked mod(s) is a blacklist, so every other catalog id is ticked: " + arrayList.size() + " ticked, " + n + " left unticked. That is what 4.x detected, but with escalation a ticked mod can now cost a tier-2 probe on every join - move the ids you care about into the detect: list to make it permanent.");
             return arrayList;
         }
@@ -284,9 +274,8 @@ extends JavaPlugin {
             }
         }
         this.hackDefinitionsFull = this.dedupeHackDefinitions(arrayList);
-        // Tier 1 = the detect: list. A hacks:-section id the catalog has never heard of is always
-        // tier 1: it was written by hand on purpose, and making it escalation-only would mean it
-        // could never be unticked - there would be nothing to un-tick.
+        // A hacks:-section id the catalog has never heard of is always tier 1: it was hand-written on
+        // purpose, and escalation-only would leave nothing to un-tick.
         ArrayList<HackDefinition> arrayList2 = new ArrayList<HackDefinition>();
         for (HackDefinition hackDefinition : this.hackDefinitionsFull) {
             if (this.catalog.isTicked(hackDefinition.id()) || !this.catalog.knows(hackDefinition.id())) {
@@ -309,8 +298,8 @@ extends JavaPlugin {
         this.lastResult.put(player.getUniqueId(), set);
         CommandSender commandSender = this.manualCheckSenders.remove(player.getUniqueId());
         if (commandSender != null) {
-            // The sender who asked gets the full breakdown; the alert-staff broadcast below is a
-            // deliberately flat one-liner, because it is read by people who did not run the check.
+            // The sender gets the full breakdown; the broadcast below is a flat one-liner for people
+            // who did not run the check.
             Component who = Component.text((String)"Check finished on ", (TextColor)NamedTextColor.GRAY)
                     .append((Component)Component.text((String)player.getName(), (TextColor)NamedTextColor.WHITE));
             this.reportDetected(commandSender, Msg.prefixed(who), set);
@@ -326,8 +315,7 @@ extends JavaPlugin {
         if (this.alertStaff) {
             Component string2;
             string2 = Msg.prefixed(((TextComponent)Component.text((String)player.getName(), (TextColor)NamedTextColor.WHITE).append((Component)Component.text((String)" detected with: ", (TextColor)NamedTextColor.GRAY))).append((Component)Component.text((String)string, (TextColor)NamedTextColor.YELLOW)));
-            // Recipients live on their own regions, so each is messaged from its own scheduler rather
-            // than from whichever region produced this result.
+            // Recipients are on their own regions, so each is messaged from its own scheduler.
             for (Player player2 : Bukkit.getOnlinePlayers()) {
                 Sched.onPlayer((Plugin)this, player2, 0, () -> {
                     if (player2.hasPermission("testffa.alerts")) {
@@ -371,9 +359,8 @@ extends JavaPlugin {
         return this.catalog.displayName(string);
     }
 
-    // A hacks:-section entry's own punish: wins over the catalog's punish: for the same id, matching
-    // how the punishment path resolves it. Kept as one method so the report and the kick decision
-    // can never disagree about whether a mod is grounds for a kick.
+    // A hacks:-section entry's own punish: wins over the catalog's, matching the punishment
+    // path. One method, so the report and the kick decision cannot disagree.
     public boolean punishFor(String modId) {
         for (HackDefinition hackDefinition : this.hackDefinitionsFull) {
             if (hackDefinition.id().equals(modId)) {
@@ -383,20 +370,13 @@ extends JavaPlugin {
         return this.catalog.shouldPunish(modId);
     }
 
-    // The one place a detection list is rendered to a human. /md check and /md history both route
-    // through here, so they cannot drift apart - an admin who has learned one has learned both.
-    //
-    // The old form joined every display name into a single comma-separated line, which is unreadable
-    // the moment a tier-2 escalation names twenty mods, and it hid the two facts staff actually act
-    // on: the mod id (needed for /moddetector allow|disallow) and whether it can cost a kick at all.
+    // The one place a detection list is rendered, so /md check and /md history cannot drift apart.
     public void reportDetected(CommandSender sender, Component header, Set<String> detected) {
         if (detected == null || detected.isEmpty()) {
             sender.sendMessage(header.append((Component)Component.text((String)" - no unauthorized modifications detected.", (TextColor)NamedTextColor.GREEN)));
             return;
         }
-        // Cheat first, then LAUNCHER, then SUSPICIOUS/UTILITY: the category order an admin triages
-        // in. Deterministic, unlike the HashSet order this used to inherit, so two checks of the
-        // same client read the same way round.
+        // Deterministic, unlike the HashSet order this used to inherit.
         ArrayList<String> sorted = new ArrayList<String>(new LinkedHashSet<String>(detected));
         sorted.sort((a, b) -> {
             int byCategory = Integer.compare(ModDetectorPlugin.CATEGORY_ORDER.indexOf(this.catalog.categoryName(a)), ModDetectorPlugin.CATEGORY_ORDER.indexOf(this.catalog.categoryName(b)));
@@ -422,8 +402,8 @@ extends JavaPlugin {
                 .append((Component)Component.text((String)" - /moddetector allow|disallow <mod-id> changes that.", (TextColor)NamedTextColor.DARK_GRAY))));
     }
 
-    // Red cross = grounds for a kick, yellow tick = detected and reported but never punished. The
-    // same distinction the punish axis already draws in /moddetector list, so staff read one legend.
+    // Red cross = grounds for a kick, yellow tick = reported but never punished, matching the legend
+    // /moddetector list already uses.
     private static String mark(boolean punish) {
         return punish ? "\u2716 " : "\u2714 ";
     }
@@ -435,8 +415,7 @@ extends JavaPlugin {
                 .append((Component)Component.text((String)("\n" + (ticked ? "probed every join (tier 1)" : "probed only after a tier-1 hit (tier 2)")), (TextColor)NamedTextColor.DARK_GRAY));
     }
 
-    // A waiting /md check sender is released when the check it is waiting on can never produce a
-    // result: the player quit, or the plugin was disabled mid-check. Silence there reads as a hang.
+    // Releases a waiting sender when its check can never produce a result, since silence reads as a hang.
     public void notifyCheckCancelled(UUID uuid, String reason) {
         CommandSender commandSender = this.manualCheckSenders.remove(uuid);
         if (commandSender == null) {
@@ -478,14 +457,11 @@ extends JavaPlugin {
         UUID uuid = player.getUniqueId();
         this.manualCheckSenders.put(uuid, commandSender);
         this.hackCheckManager.markPending(uuid);
-        // This runs on the command sender's thread: the console's, or whichever region the sending
-        // admin stands in. startCheck reads the target's world and location to pick sign spots, which on
-        // Folia only the thread that owns the target may do, so the whole check is handed to the
-        // target's own scheduler. If the target leaves first, the sender is told instead of left waiting.
+        // startCheck reads the target's world to pick sign spots, which on Folia only the thread owning
+        // the target may do, so the whole check moves to that scheduler. The sender may be the console.
         Sched.onPlayer((Plugin)this, player, 0, () -> {
-            // Tier 1 only, for the same reason as the on-join path: the full catalog is the manager's
-            // job (it escalates by itself), and a manual check must report the same thing an automatic
-            // one does.
+            // Tier 1 only: the manager escalates by itself, so a manual check reports the same
+            // thing an automatic one does.
             this.scanPassive(player, DetectionScope.PRIMARY);
             this.hackCheckManager.startCheck(player);
         }, () -> {
@@ -532,8 +508,8 @@ extends JavaPlugin {
     }
 
     public Set<String> knownSignalIds() {
-        // A hacks:-section id the catalog has never heard of is a valid input to /moddetector
-        // detect|ignore: it is always tier 1, so it must be tickable and untickable like any other.
+        // A hacks:-section id the catalog has never heard of is valid input to detect|ignore: always
+        // tier 1, so it must be tickable like any other.
         LinkedHashSet<String> linkedHashSet = new LinkedHashSet<String>(this.catalog.allIds());
         for (HackDefinition hackDefinition : this.hackDefinitionsFull) {
             linkedHashSet.add(hackDefinition.id());
@@ -638,10 +614,8 @@ extends JavaPlugin {
 
     }
 
-    // Line-edits the detect: block in place. The config is never round-tripped through
-    // saveConfig(), because that rewrites every line and would destroy the hand-written comments -
-    // including the reference block listing every available mod id, which is the whole reason the
-    // tick-off list is usable without running a command.
+    // Never round-tripped through saveConfig(), which rewrites every line and would destroy the
+    // hand-written comments including the id reference block the tick list depends on.
     public DetectEditResult setTicked(String modId, boolean ticked) {
         int keyIndex;
         int endIndex;
@@ -678,12 +652,11 @@ extends JavaPlugin {
         matcher.matches();
         String flow = matcher.group(1);
         if (flow != null && !flow.replace("[", "").replace("]", "").trim().isEmpty()) {
-            // A non-empty inline list is valid YAML but not the block form this command edits, and
-            // rewriting it into block form would silently reorder whatever the admin grouped.
+            // Valid YAML, but not the block form this edits, and rewriting it would reorder the admin's grouping.
             return DetectEditResult.UNSUPPORTED_SHAPE;
         }
-        // Consume only "  - id" lines. The regex cannot match "#  # meteor" because '#' is not
-        // whitespace, which is what makes the commented reference block structurally immune.
+        // Cannot match "#  # meteor" because '#' is not whitespace, which is what makes the
+        // commented reference block structurally immune to this editor.
         for (endIndex = keyIndex + 1; endIndex < lines.size(); ++endIndex) {
             if (!ModDetectorPlugin.DETECT_ITEM.matcher(lines.get(endIndex)).matches()) break;
         }

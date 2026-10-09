@@ -24,6 +24,7 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.scheduler.BukkitTask;
+import xyz.nim.modDetectorPlugin.ModDetectorPlugin;
 import xyz.nim.modDetectorPlugin.catalog.DetectionScope;
 import xyz.nim.modDetectorPlugin.hackcheck.BedrockDetector;
 import xyz.nim.modDetectorPlugin.hackcheck.HackDefinition;
@@ -357,6 +358,12 @@ public final class HackCheckManager {
             this.endSession(checkSession);
         }
         this.pendingKick.remove(uUID);
+        // A manual check's sender is waiting specifically for this result, and a cancelled check can
+        // never produce one. Released here so /md check on a quitting player reports that instead
+        // of leaving the admin watching a line that will never be answered.
+        if (this.plugin instanceof ModDetectorPlugin) {
+            ((ModDetectorPlugin)this.plugin).notifyCheckCancelled(uUID, "the player left before the check finished");
+        }
     }
 
     public void shutdown() {

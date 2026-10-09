@@ -25,6 +25,13 @@ public final class Msg {
         return Msg.prefixed((Component)Component.text((String)string, (TextColor)NamedTextColor.RED));
     }
 
+    // Green tick / red cross, used for every on/off fact the plugin reports (tick state, punish
+    // state, enforcement switches). Lives here rather than in the command class because the result
+    // renderer needs it too, and two copies of the same glyph pair would eventually drift.
+    public static Component bool(boolean bl, String string, String string2) {
+        return bl ? Component.text((String)("\u2714 " + string), (TextColor)NamedTextColor.GREEN) : Component.text((String)("\u2716 " + string2), (TextColor)NamedTextColor.RED);
+    }
+
     public static Component divider() {
         return Component.text((String)"\u25ac".repeat(32), (TextColor)NamedTextColor.DARK_GRAY);
     }

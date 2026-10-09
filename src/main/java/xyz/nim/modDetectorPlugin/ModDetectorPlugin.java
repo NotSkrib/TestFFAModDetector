@@ -22,6 +22,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.TextComponent;
+import net.kyori.adventure.text.event.ClickEvent;
+import net.kyori.adventure.text.event.HoverEvent;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextColor;
 import org.bukkit.Bukkit;
@@ -49,6 +51,10 @@ extends JavaPlugin {
     private static final int DEFAULT_PASSIVE_DELAY_TICKS = 5;
     private static final int DEFAULT_TIMEOUT_TICKS = 40;
     private static final int DEFAULT_BETWEEN_BATCH_TICKS = 0;
+    // Report order, most-serious first. An admin triaging a detection list reads it top-down, so a
+    // CHEAT hit must not sit below a LAUNCHER one. UNKNOWN last: it is what an id the catalog has
+    // never heard of resolves to, so it is the least informative entry, not the most urgent.
+    private static final List<String> CATEGORY_ORDER = List.of("CHEAT", "SUSPICIOUS", "LAUNCHER", "UTILITY", "UNKNOWN");
     // A "detect:" key at column 0, with an optional inline flow list and an optional trailing
     // comment. Group 1 is the flow list; a non-empty one is a shape this editor does not write and
     // will not rewrite, so it is reported rather than silently reformatted.
@@ -88,13 +94,7 @@ extends JavaPlugin {
         this.hackCheckManager.setPassiveCache((uUID, detectionScope) -> this.passiveResultFor(uUID, detectionScope));
         this.hackCheckManager.setPassiveProbe((player, detectionScope) -> this.scanPassive(player, detectionScope));
         this.hackCheckManager.setDisplayResolver(this::displayFor);
-        this.hackCheckManager.setPunishResolver(string -> {
-            for (HackDefinition hackDefinition : this.hackDefinitionsFull) {
-                if (!hackDefinition.id().equals(string)) continue;
-                return hackDefinition.punish();
-            }
-            return this.catalog.shouldPunish((String)string);
-        });
+        this.hackCheckManager.setPunishResolver(this::punishFor);
         this.hackCheckManager.setPunishmentResolver(this.catalog::punishmentsFor);
         this.hackCheckManager.setOnResult(this::handleResult);
         this.hackCheckListener = new HackCheckListener((Plugin)this, this.hackCheckManager);
@@ -121,6 +121,11 @@ extends JavaPlugin {
         try {
             if (this.hackCheckManager != null) {
                 this.hackCheckManager.shutdown();
+            }
+            // shutdown() deliberately produces no result, so a /md check waiting on a sender would
+            // otherwise never be told anything and would stay in manualCheckSenders forever.
+            for (UUID uuid : new ArrayList<UUID>(this.manualCheckSenders.keySet())) {
+                this.notifyCheckCancelled(uuid, "the plugin was disabled before the check finished");
             }
         }
         catch (Throwable throwable) {
@@ -264,10 +269,14 @@ extends JavaPlugin {
     private void handleResult(Player player, Set<String> set) {
         this.lastResult.put(player.getUniqueId(), set);
         CommandSender commandSender = this.manualCheckSenders.remove(player.getUniqueId());
+        if (commandSender != null) {
+            // The sender who asked gets the full breakdown; the alert-staff broadcast below is a
+            // deliberately flat one-liner, because it is read by people who did not run the check.
+            Component who = Component.text((String)"Check finished on ", (TextColor)NamedTextColor.GRAY)
+                    .append((Component)Component.text((String)player.getName(), (TextColor)NamedTextColor.WHITE));
+            this.reportDetected(commandSender, Msg.prefixed(who), set);
+        }
         if (set.isEmpty()) {
-            if (commandSender != null) {
-                commandSender.sendMessage(Msg.prefixed(((TextComponent)Component.text((String)"Check finished on ", (TextColor)NamedTextColor.GRAY).append((Component)Component.text((String)player.getName(), (TextColor)NamedTextColor.WHITE))).append((Component)Component.text((String)" - no unauthorized modifications detected.", (TextColor)NamedTextColor.GREEN))));
-            }
             return;
         }
         LinkedHashSet<String> linkedHashSet = new LinkedHashSet<String>();
@@ -275,9 +284,6 @@ extends JavaPlugin {
             linkedHashSet.add(this.displayFor(string2));
         }
         String string = String.join((CharSequence)", ", linkedHashSet);
-        if (commandSender != null) {
-            commandSender.sendMessage(Msg.prefixed(((TextComponent)((TextComponent)Component.text((String)"Check finished on ", (TextColor)NamedTextColor.GRAY).append((Component)Component.text((String)player.getName(), (TextColor)NamedTextColor.WHITE))).append((Component)Component.text((String)" - detected: ", (TextColor)NamedTextColor.RED))).append((Component)Component.text((String)string, (TextColor)NamedTextColor.YELLOW))));
-        }
         if (this.getConfig().getBoolean("alert-staff", true)) {
             Component string2;
             string2 = Msg.prefixed(((TextComponent)Component.text((String)player.getName(), (TextColor)NamedTextColor.WHITE).append((Component)Component.text((String)" detected with: ", (TextColor)NamedTextColor.GRAY))).append((Component)Component.text((String)string, (TextColor)NamedTextColor.YELLOW)));
@@ -318,6 +324,81 @@ extends JavaPlugin {
             return hackDefinition.display();
         }
         return this.catalog.displayName(string);
+    }
+
+    // A hacks:-section entry's own punish: wins over the catalog's punish: for the same id, matching
+    // how the punishment path resolves it. Kept as one method so the report and the kick decision
+    // can never disagree about whether a mod is grounds for a kick.
+    public boolean punishFor(String modId) {
+        for (HackDefinition hackDefinition : this.hackDefinitionsFull) {
+            if (hackDefinition.id().equals(modId)) {
+                return hackDefinition.punish();
+            }
+        }
+        return this.catalog.shouldPunish(modId);
+    }
+
+    // The one place a detection list is rendered to a human. /md check and /md history both route
+    // through here, so they cannot drift apart - an admin who has learned one has learned both.
+    //
+    // The old form joined every display name into a single comma-separated line, which is unreadable
+    // the moment a tier-2 escalation names twenty mods, and it hid the two facts staff actually act
+    // on: the mod id (needed for /moddetector allow|disallow) and whether it can cost a kick at all.
+    public void reportDetected(CommandSender sender, Component header, Set<String> detected) {
+        if (detected == null || detected.isEmpty()) {
+            sender.sendMessage(header.append((Component)Component.text((String)" - no unauthorized modifications detected.", (TextColor)NamedTextColor.GREEN)));
+            return;
+        }
+        // Cheat first, then LAUNCHER, then SUSPICIOUS/UTILITY: the category order an admin triages
+        // in. Deterministic, unlike the HashSet order this used to inherit, so two checks of the
+        // same client read the same way round.
+        ArrayList<String> sorted = new ArrayList<String>(new LinkedHashSet<String>(detected));
+        sorted.sort((a, b) -> {
+            int byCategory = Integer.compare(ModDetectorPlugin.CATEGORY_ORDER.indexOf(this.catalog.categoryName(a)), ModDetectorPlugin.CATEGORY_ORDER.indexOf(this.catalog.categoryName(b)));
+            return byCategory != 0 ? byCategory : this.displayFor(a).compareToIgnoreCase(this.displayFor(b));
+        });
+        int punishable = 0;
+        for (String modId : sorted) {
+            if (this.punishFor(modId)) {
+                ++punishable;
+            }
+        }
+        sender.sendMessage(header.append((Component)Component.text((String)(" - " + sorted.size() + " mod(s) detected"), (TextColor)NamedTextColor.RED)));
+        for (String modId : sorted) {
+            boolean punish = this.punishFor(modId);
+            Component line = Component.text((String)" " + ModDetectorPlugin.mark(punish), (TextColor)(punish ? NamedTextColor.RED : NamedTextColor.YELLOW))
+                    .append((Component)Component.text((String)this.displayFor(modId), (TextColor)NamedTextColor.WHITE))
+                    .append((Component)Component.text((String)(" [" + this.catalog.categoryName(modId) + "]"), (TextColor)NamedTextColor.DARK_GRAY))
+                    .append((Component)Component.text((String)(" " + modId), (TextColor)NamedTextColor.DARK_GRAY));
+            line = line.hoverEvent(HoverEvent.showText(ModDetectorPlugin.detectHover(modId, punish, this.catalog.isTicked(modId))));
+            sender.sendMessage(Msg.prefixed(line));
+        }
+        sender.sendMessage(Msg.prefixed(Component.text((String)(punishable > 0 ? punishable + " of " + sorted.size() + " can cost a kick" : "none of these can cost a kick - all are punish: false"), (TextColor)(punishable > 0 ? NamedTextColor.YELLOW : NamedTextColor.GREEN))
+                .append((Component)Component.text((String)" - /moddetector allow|disallow <mod-id> changes that.", (TextColor)NamedTextColor.DARK_GRAY))));
+    }
+
+    // Red cross = grounds for a kick, yellow tick = detected and reported but never punished. The
+    // same distinction the punish axis already draws in /moddetector list, so staff read one legend.
+    private static String mark(boolean punish) {
+        return punish ? "\u2716 " : "\u2714 ";
+    }
+
+    private static Component detectHover(String modId, boolean punish, boolean ticked) {
+        return Component.text((String)modId, (TextColor)NamedTextColor.DARK_GRAY)
+                .append((Component)Component.text((String)("\npunish: " + punish), (TextColor)(punish ? NamedTextColor.RED : NamedTextColor.GREEN)))
+                .append((Component)Component.text((String)("\nticked: " + ticked), (TextColor)(ticked ? NamedTextColor.GREEN : NamedTextColor.RED)))
+                .append((Component)Component.text((String)("\n" + (ticked ? "probed every join (tier 1)" : "probed only after a tier-1 hit (tier 2)")), (TextColor)NamedTextColor.DARK_GRAY));
+    }
+
+    // A waiting /md check sender is released when the check it is waiting on can never produce a
+    // result: the player quit, or the plugin was disabled mid-check. Silence there reads as a hang.
+    public void notifyCheckCancelled(UUID uuid, String reason) {
+        CommandSender commandSender = this.manualCheckSenders.remove(uuid);
+        if (commandSender == null) {
+            return;
+        }
+        String name = Bukkit.getOfflinePlayer(uuid).getName();
+        commandSender.sendMessage(Msg.prefixed(((TextComponent)Component.text((String)"Check on ", (TextColor)NamedTextColor.GRAY).append((Component)Component.text((String)(name == null ? "that player" : name), (TextColor)NamedTextColor.WHITE))).append((Component)Component.text((String)(" - cancelled: " + reason), (TextColor)NamedTextColor.YELLOW))));
     }
 
     public Set<String> scanPassive(Player player, DetectionScope scope) {

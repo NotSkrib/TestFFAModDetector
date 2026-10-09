@@ -29,7 +29,7 @@ public final class ModDetectorCommand
 implements CommandExecutor,
 TabCompleter {
     private static final List<String> SUBCOMMANDS = List.of("help", "status", "hacks", "check", "history", "list", "allow", "disallow", "detect", "ignore", "reload");
-    private static final List<Entry> MENU = List.of(new Entry("status", "Plugin, catalog, and enforcement status", false), new Entry("check <player>", "Run a full check on a player right now", true), new Entry("history <player>", "Last detection result recorded for a player", true), new Entry("list [category] [all|ticked|unticked]", "Browse the mod database by category", true), new Entry("allow <mod>", "Punish axis: stop kicking for a mod (still detected/alerted)", true), new Entry("disallow <mod>", "Punish axis: make a mod grounds for a kick again", true), new Entry("detect <mod>", "Detect axis: TICK a mod on - add it to the detect: list (tier 1)", true), new Entry("ignore <mod>", "Detect axis: UNTICK a mod - only tier 2 escalation covers it", true), new Entry("hacks", "Sign-probe definitions enabled / total", false), new Entry("reload", "Reload config.yml (settings + mod database)", false));
+    private static final List<Entry> MENU = List.of(new Entry("status", "Plugin, catalog, and enforcement status", false), new Entry("check [player]", "Run a full check now (no name = yourself)", false), new Entry("history <player>", "Last detection result recorded for a player", true), new Entry("list [category] [all|ticked|unticked]", "Browse the mod database by category", true), new Entry("allow <mod>", "Punish axis: stop kicking for a mod (still detected/alerted)", true), new Entry("disallow <mod>", "Punish axis: make a mod grounds for a kick again", true), new Entry("detect <mod>", "Detect axis: TICK a mod on - add it to the detect: list (tier 1)", true), new Entry("ignore <mod>", "Detect axis: UNTICK a mod - only tier 2 escalation covers it", true), new Entry("hacks", "Sign-probe definitions enabled / total", false), new Entry("reload", "Reload config.yml (settings + mod database)", false));
     private final ModDetectorPlugin plugin;
 
     public ModDetectorCommand(ModDetectorPlugin modDetectorPlugin) {
@@ -57,17 +57,28 @@ TabCompleter {
                 break;
             }
             case "check": {
+                // No argument = check yourself. An admin running a check on their own client is the
+                // common case (verify a mod before deciding to allow or punish it), and typing your
+                // own name every time was the only thing making this subcommand feel broken.
+                Player player = null;
                 if (stringArray.length < 2) {
-                    commandSender.sendMessage(Msg.error("Usage: /moddetector check <player>"));
-                    return true;
+                    if (!(commandSender instanceof Player)) {
+                        commandSender.sendMessage(Msg.error("The console has no client to check - use /moddetector check <player>."));
+                        return true;
+                    }
+                    player = (Player)commandSender;
                 }
-                Player player = Bukkit.getPlayerExact((String)stringArray[1]);
-                if (player == null) {
-                    commandSender.sendMessage(Msg.error("Player not online."));
-                    return true;
+                else {
+                    player = Bukkit.getPlayerExact(stringArray[1]);
+                    if (player == null) {
+                        commandSender.sendMessage(Msg.error("Player not online."));
+                        return true;
+                    }
                 }
                 if (!this.plugin.manualCheck(player, commandSender)) break;
-                commandSender.sendMessage(Msg.prefixed(((TextComponent)Component.text((String)"Running check on ", (TextColor)NamedTextColor.GRAY).append((Component)Component.text((String)player.getName(), (TextColor)NamedTextColor.WHITE))).append((Component)Component.text((String)" - results will be logged / alerted when done.", (TextColor)NamedTextColor.GRAY))));
+                // Says the result lands here, because that is now exactly what happens - the old
+                // wording pointed staff at the console and their alert permissions instead.
+                commandSender.sendMessage(Msg.prefixed(((TextComponent)Component.text((String)"Running check on ", (TextColor)NamedTextColor.GRAY).append((Component)Component.text((String)player.getName(), (TextColor)NamedTextColor.WHITE))).append((Component)Component.text((String)" - detected mods are listed below when it finishes.", (TextColor)NamedTextColor.GRAY))));
                 break;
             }
             case "history": {
@@ -107,7 +118,7 @@ TabCompleter {
     }
 
     private static Component bool(boolean bl, String string, String string2) {
-        return bl ? Component.text((String)("\u2714 " + string), (TextColor)NamedTextColor.GREEN) : Component.text((String)("\u2716 " + string2), (TextColor)NamedTextColor.RED);
+        return Msg.bool(bl, string, string2);
     }
 
     private static Component statRow(String string, Component component) {
@@ -165,8 +176,9 @@ TabCompleter {
         } else if (set.isEmpty()) {
             commandSender.sendMessage(Msg.prefixed(((TextComponent)textComponent.append((Component)Component.text((String)" - last check: ", (TextColor)NamedTextColor.GRAY))).append((Component)Component.text((String)"clean", (TextColor)NamedTextColor.GREEN))));
         } else {
-            String string2 = set.stream().map(this.plugin::displayFor).distinct().collect(Collectors.joining(", "));
-            commandSender.sendMessage(Msg.prefixed(((TextComponent)textComponent.append((Component)Component.text((String)" - last detected: ", (TextColor)NamedTextColor.RED))).append((Component)Component.text((String)string2, (TextColor)NamedTextColor.YELLOW))));
+            // Routed through the same renderer a live /md check uses, so history is not a second,
+            // worse format the admin has to learn.
+            this.plugin.reportDetected(commandSender, Msg.prefixed(textComponent.append((Component)Component.text((String)" - last check:", (TextColor)NamedTextColor.RED))), set);
         }
     }
 
@@ -318,6 +330,8 @@ TabCompleter {
         }
         if (stringArray.length == 2) {
             return switch (stringArray[0].toLowerCase()) {
+                // "check <TAB>" is still a name lookup; tabbing is the discoverable path to the
+                // argument that /md check itself no longer requires.
                 case "check" -> ModDetectorCommand.prefixMatch(Bukkit.getOnlinePlayers().stream().map(Player::getName).collect(Collectors.toList()), stringArray[1]);
                 case "history" -> {
                     LinkedHashSet<String> var7_7 = new LinkedHashSet<String>();

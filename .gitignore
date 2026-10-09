@@ -5,3 +5,10 @@ cfr.jar
 .idea/
 *.iml
 .vscode/
+
+# Scratch list of tracked clients, kept only while auditing the catalog.
+mods-list.txt
+
+# Build output belongs in Releases, not the history.
+*.jar
+!target/classes/**/*.jar

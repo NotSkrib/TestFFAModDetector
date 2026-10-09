@@ -6,7 +6,7 @@ api-version: '1.21.11'
 # the entity/global schedulers (Paper API), so the same jar still runs on Paper, Purpur and Leaf.
 folia-supported: true
 author: TestFFA
-description: TestFFAModDetector - channel-based + sign-probe mod/hack-client detection, + two-tier detect list.
+description: Channel-based + sign-probe mod/hack-client detection, with a two-tier detect list.
 # Legacy Bukkit plugin type deliberately, NOT paper-plugin.yml: Paper loads all
 # paper-plugin.yml plugins in an earlier phase than all plugin.yml (legacy Bukkit)
 # plugins, so a depend: on a legacy-Bukkit plugin (packetevents) from a Paper-type
@@ -23,7 +23,7 @@ commands:
 
 permissions:
   testffa.admin:
-    description: Use /moddetector admin subcommands.
+    description: Run /md subcommands.
     default: op
   testffa.alerts:
     description: Receive alerts when a player is detected.
